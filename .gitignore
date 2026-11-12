@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# local debug scratch (machine-specific absolute paths)
+_scan.mjs
+rs-cdp.cjs
+
+# DSH / build artefacts
+.dsh-gcc/
+*.log
+npm-debug.log*
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

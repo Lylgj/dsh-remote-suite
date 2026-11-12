@@ -1,0 +1,63 @@
+{
+  "name": "dsh-remote-suite",
+  "version": "0.1.0",
+  "description": "One DeepSeek Harness plugin for WSL, SSH, Docker and remote-daemon workspaces: a single Backend seam, one sidebar entry, one tool namespace.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "client.js",
+    "assets",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "wsl",
+    "ssh",
+    "docker",
+    "remote-workspace"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    },
+    "manifestVersion": 1
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs && node test/api-smoke.mjs && node test/client-smoke.mjs && node test/pty-smoke.mjs && node test/docker-smoke.mjs && node test/secrets-smoke.mjs && node test/mirror-smoke.mjs && node test/errors-smoke.mjs",
+    "test:ssh": "node test/ssh-smoke.mjs",
+    "test:jump": "node test/ssh-jump-smoke.mjs",
+    "test:daemon": "node test/daemon-smoke.mjs",
+    "test:tunnel": "node test/tunnel-smoke.mjs"
+  },
+  "dependencies": {
+    "ssh2": "^1.17.0",
+    "ws": "^8.22.2"
+  },
+  "devDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

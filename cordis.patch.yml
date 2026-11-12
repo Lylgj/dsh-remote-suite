@@ -1,0 +1,18 @@
+# This bundle layer inserts the remote-suite host plugin process-wide, so the
+# `remote` tool reaches every agent preset without each preset declaring it.
+#
+# Do NOT add a second row for the same plugin into a preset: DSH registers tools
+# by name and the duplicate fails with `tool "remote" is already registered in
+# this scope`. To keep this tool out of a composition, disable this row by id in
+# a later patch layer:
+#
+#   - id: remote-suite
+#     disabled: true
+#
+# The `name:` is PATH-RELATIVE on purpose: DSH anchors a relative name to the
+# directory of the patch file that declared it, so this row always loads this
+# package's own index.js no matter what the installed folder is called.
+
+- insert:
+    - id: remote-suite
+      name: './index.js'
