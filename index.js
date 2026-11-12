@@ -6,9 +6,9 @@
 // file only wires them up; everything else lives in lib/.
 //
 // Backend contract (lib/backends/base.js documents it):
-//   exec / read / write / stat / list  鈥?file and command surface
-//   grep / glob / probe                鈥?search surface
-//   openTerminal                       鈥?interactive shell (lib/pty.js)
+//   exec / read / write / stat / list  — file and command surface
+//   grep / glob / probe                — search surface
+//   openTerminal                       — interactive shell (lib/pty.js)
 //
 // The `inject` list is what the plugin cannot work without. `tools` is the tool
 // registry; every optional service (webServer, settings, slots) is asked for at
