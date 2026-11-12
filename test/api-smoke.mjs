@@ -112,6 +112,11 @@ try {
   await api['ssh-profile-remove']({ alias: 'smoke-ssh' })
   assert.ok(!(await api['ssh-profiles']()).some((p) => p.alias === 'smoke-ssh'))
   await assert.rejects(() => api['ssh-profile-add']({ alias: 'bad alias!', hostname: 'x' }), /alias must be/)
+  // The alias is an id inside this plugin only, so a Chinese name is a valid
+  // alias: it never becomes a `Host` line in ~/.ssh/config.
+  const chinese = await api['ssh-profile-add']({ alias: '云服务器', hostname: '192.0.2.2' })
+  assert.equal(chinese.alias, '云服务器')
+  await api['ssh-profile-remove']({ alias: '云服务器' })
   console.log('ok  ssh profiles (add / list / remove)')
 
   const remoteRegistry = {

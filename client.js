@@ -779,6 +779,9 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState(null)
       const [form, setForm] = React.useState(null)
+      // Problems with the new-host form itself are reported next to the field
+      // they belong to; `error` stays for the whole dialog (target, path, API).
+      const [formError, setFormError] = React.useState(null)
       const [filePick, setFilePick] = React.useState(null)
       const [pickInput, setPickInput] = React.useState('')
       // This component is the plugin's only visible surface now, so it pulls the
@@ -903,6 +906,18 @@ window.__ModuleLoader__.load({
         return value.slice(0, cut) || '/'
       }
 
+      // Same rule as `profileAlias` in lib/api.js, checked before the round trip
+      // so the message lands under the field the user has to fix. Chinese names
+      // are fine; spaces, colons and slashes are not, because the alias becomes
+      // part of the target id (`ssh:<alias>`).
+      const ALIAS_RE = /^[\p{L}\p{N}._-]{1,64}$/u
+      const aliasProblem = (value) => {
+        const alias = value.trim()
+        if (alias === '') return '请填写别名'
+        if (!ALIAS_RE.test(alias)) return '别名只能用字母（中文也可以）、数字、点、横线、下划线，1-64 个字，不能有空格'
+        return null
+      }
+
       const submit = async () => {
         const target = resolveTarget()
         if (target === '') {
@@ -942,7 +957,13 @@ window.__ModuleLoader__.load({
 
       const addProfile = async () => {
         if (form === null) return
+        const problem = aliasProblem(form.alias)
+        if (problem !== null) {
+          setFormError(problem)
+          return
+        }
         try {
+          setFormError(null)
           setError(null)
           const saved = await call('ssh-profile-add', {
             alias: form.alias.trim(),
@@ -958,7 +979,11 @@ window.__ModuleLoader__.load({
           setChoice(saved.alias)
           setTab('ssh')
         } catch (e) {
-          setError(String(e.message || e))
+          // A rejection about the alias belongs under that field, not in the
+          // dialog-wide error line at the very bottom.
+          const message = String(e.message || e)
+          if (/alias/i.test(message)) setFormError(message)
+          else setError(message)
         }
       }
 
@@ -987,11 +1012,16 @@ window.__ModuleLoader__.load({
       const pickIdentityFile = async () => {
         try {
           setError(null)
+          setFormError(null)
           const result = await call('home', { target: 'local' })
           const home = result.home || 'C:\\'
           const roots = await call('roots').catch(() => [])
           setFilePick({ dir: home, entries: [], error: null, roots: Array.isArray(roots) ? roots : [] })
-          setPickInput(home)
+          // Start where the field already points: a key outside ~/.ssh (D:\lgj\ssh
+          // on this machine, say) is then one click away instead of five.
+          const typed = form === null ? '' : form.identityFile.trim()
+          const typedDir = typed === '' ? '' : parentOf(typed)
+          if (typedDir !== '' && typedDir !== typed && (await listFiles(typedDir))) return
           const separator = home.endsWith('\\') || home.endsWith('/') ? '' : '\\'
           const sshDir = `${home}${separator}.ssh`
           if (await listFiles(sshDir)) return
@@ -999,6 +1029,13 @@ window.__ModuleLoader__.load({
         } catch (e) {
           setError(String(e.message || e))
         }
+      }
+
+      const usePickedPath = () => {
+        const value = pickInput.trim()
+        if (value === '') return
+        setForm({ ...form, identityFile: value })
+        setFilePick(null)
       }
 
       const chooseFile = (entry) => {
@@ -1046,8 +1083,10 @@ window.__ModuleLoader__.load({
                   KitButton,
                   {
                     variant: 'outline',
-                    onClick: () =>
-                      setForm({ alias: '', hostname: '', user: '', port: '', identityFile: '', password: '' }),
+                    onClick: () => {
+                      setForm({ alias: '', hostname: '', user: '', port: '', identityFile: '', password: '' })
+                      setFormError(null)
+                    },
                   },
                   '＋ 新增',
                 )
@@ -1091,7 +1130,7 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { className: 'rs-flow-grid' },
-                  field('alias', '别名', '如 prod-1'),
+                  field('alias', '别名', '如 云服务器 或 prod-1'),
                   field('hostname', '主机', '主机名或 IP'),
                   field('user', '用户', '可空'),
                   field('port', '端口', '默认 22'),
@@ -1113,6 +1152,9 @@ window.__ModuleLoader__.load({
                   ),
                 ),
                 field('password', '密码', '可空', 'password'),
+                formError === null
+                  ? null
+                  : h('div', { className: 'rs-flow-error' }, formError),
               ),
               h(
                 'div',
@@ -1147,7 +1189,7 @@ window.__ModuleLoader__.load({
         rows.push(
           h(
             'div',
-            { key: 'file-pick', className: 'rs-picker-backdrop' },
+            { key: 'file-pick', className: 'rs-picker-backdrop', style: { zIndex: 1100 } },
             h(
               'div',
               { className: 'rs-picker-card', role: 'dialog', 'aria-label': '选择私钥文件' },
@@ -1213,6 +1255,17 @@ window.__ModuleLoader__.load({
                 h(KitButton, { variant: 'outline', onClick: () => void pickIdentityFile() }, '主目录'),
                 h('span', { style: { flex: 1 } }),
                 h(KitButton, { variant: 'outline', onClick: () => setFilePick(null) }, '取消'),
+                // The input above doubles as the answer: a path typed by hand
+                // (or a file the list cannot show) is accepted as-is.
+                h(
+                  KitButton,
+                  {
+                    variant: 'primary',
+                    disabled: pickInput.trim() === '',
+                    onClick: usePickedPath,
+                  },
+                  '使用此路径',
+                ),
               ),
             ),
           ),
