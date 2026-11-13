@@ -119,22 +119,23 @@ try {
   assert.equal(removed.removed, 'smoke-ssh')
   assert.equal(typeof removed.secretRemoved, 'boolean')
   assert.ok(!(await api['ssh-profiles']()).some((p) => p.alias === 'smoke-ssh'))
-  await assert.rejects(() => api['ssh-profile-remove']({ alias: 'smoke-ssh' }), /no SSH host named/)
+  await assert.rejects(() => api['ssh-profile-remove']({ alias: 'smoke-ssh' }), /no saved profile named/)
   await assert.rejects(() => api['ssh-profile-add']({ alias: 'bad alias!', hostname: 'x' }), /alias must be/)
   // The alias is an id inside this plugin only, so a Chinese name is a valid
   // alias: it never becomes a `Host` line in ~/.ssh/config.
   const chinese = await api['ssh-profile-add']({ alias: '云服务器', hostname: '192.0.2.2' })
   assert.equal(chinese.alias, '云服务器')
   await api['ssh-profile-remove']({ alias: '云服务器' })
-  // A host from `~/.ssh/config` is hidden, not edited: that file belongs to the
-  // user, so the plugin only stops offering the alias.
+  // A host from `~/.ssh/config` is not the plugin's to delete: the call must
+  // refuse and say where the entry lives, leaving that file untouched.
   assert.ok((await api['ssh-profiles']()).some((p) => p.alias === 'box' && p.source === 'config'))
-  const hiddenBox = await api['ssh-profile-remove']({ alias: 'box' })
-  assert.equal(hiddenBox.source, 'config')
-  assert.equal(hiddenBox.hidden, true)
-  assert.ok(!(await api['ssh-profiles']()).some((p) => p.alias === 'box'))
+  await assert.rejects(
+    () => api['ssh-profile-remove']({ alias: 'box' }),
+    /hosts from ~\/\.ssh\/config are edited in that file/,
+  )
+  assert.ok((await api['ssh-profiles']()).some((p) => p.alias === 'box'))
   assert.match(await fs.readFile(configFile, 'utf8'), /Host box/)
-  console.log('ok  ssh profiles (add / list / remove / hide config host)')
+  console.log('ok  ssh profiles (add / list / remove / config host stays)')
 
   const remoteRegistry = {
     listTargets: async () => [{ id: 'local', kind: 'local', label: '此电脑' }],

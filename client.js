@@ -529,6 +529,15 @@ window.__ModuleLoader__.load({
       .rs-flow-empty { padding: 18px 8px; text-align: center; font-size: 12px;
                 color: color-mix(in srgb, currentColor 55%, transparent); }
       .rs-flow-error { font-size: 12px; color: var(--dsh-danger, #e5534b); word-break: break-word; }
+      .rs-profile-list { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow: auto; }
+      .rs-profile-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+                border: 1px solid color-mix(in srgb, currentColor 14%, transparent); border-radius: 8px; }
+      .rs-profile-main { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+      .rs-profile-alias { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rs-profile-addr { font-size: 12px; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rs-profile-tag { font-size: 11px; padding: 1px 6px; border-radius: 999px;
+                background: color-mix(in srgb, currentColor 10%, transparent); white-space: nowrap; }
+      .rs-profile-note { font-size: 12px; opacity: 0.55; white-space: nowrap; }
       .rs-modal-workspace { width: min(720px, 94vw) !important; max-width: min(720px, 94vw) !important; }
     `
 
@@ -784,6 +793,9 @@ window.__ModuleLoader__.load({
       const [formError, setFormError] = React.useState(null)
       const [filePick, setFilePick] = React.useState(null)
       const [pickInput, setPickInput] = React.useState('')
+      // The manage dialog lists every known host so the delete target is chosen
+      // by name rather than by whatever the select happens to be showing.
+      const [manage, setManage] = React.useState(false)
       // This component is the plugin's only visible surface now, so it pulls the
       // target list itself instead of relying on the (unmounted) panel.
       React.useEffect(() => {
@@ -987,27 +999,21 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // Both kinds of host can be removed from the list: a saved one really is
-      // deleted, while a `~/.ssh/config` one is only hidden here — that file is
-      // the user's own, so the plugin never rewrites it.
-      const selectedProfile =
-        tab === 'ssh' ? profiles.find((profile) => profile.alias === choiceValue) : undefined
-      const canRemoveProfile = selectedProfile !== undefined
-      const selectedFromConfig = canRemoveProfile && selectedProfile.source !== 'saved'
+      // Hosts read from `~/.ssh/config` stay: that file is the user's own and
+      // the plugin never rewrites it. The manage dialog therefore offers delete
+      // only for hosts saved from this dialog, and says why for the others.
+      const refreshProfiles = async () => {
+        const list = await call('ssh-profiles')
+        setProfiles(Array.isArray(list) ? list : [])
+        return Array.isArray(list) ? list : []
+      }
 
-      const removeProfile = async () => {
-        if (!canRemoveProfile) return
-        const alias = selectedProfile.alias
-        const question = selectedFromConfig
-          ? `从列表里移除「${alias}」？\n\n它来自 ~/.ssh/config，只会从本插件隐藏，不会改动那个文件。`
-          : `删除已保存的 SSH 主机「${alias}」？\n\n它和存着的密码都会被删掉。`
-        if (typeof window === 'undefined' || typeof window.confirm !== 'function' || !window.confirm(question)) return
+      const removeProfile = async (alias) => {
         try {
           setError(null)
           await call('ssh-profile-remove', { alias })
-          const list = await call('ssh-profiles')
-          setProfiles(Array.isArray(list) ? list : [])
-          setChoice('')
+          await refreshProfiles()
+          setChoice((current) => (current === alias ? '' : current))
         } catch (e) {
           setError(String(e.message || e))
         }
@@ -1116,20 +1122,20 @@ window.__ModuleLoader__.load({
                   '＋ 新增',
                 )
               : null,
-            // Delete sits next to add so a mistyped host is one click from gone.
-            // Disabled for `~/.ssh/config` entries, which this dialog may not edit.
+            // Delete opens a small list instead of acting on the selection: the
+            // select may be empty or on a host from ~/.ssh/config, and guessing
+            // which host to remove is how the wrong one disappears.
             tab === 'ssh'
               ? h(
                   KitButton,
                   {
                     variant: 'outline',
-                    disabled: !canRemoveProfile,
-                    title: canRemoveProfile
-                      ? selectedFromConfig
-                        ? '从列表里移除（不改动 ~/.ssh/config）'
-                        : '删除这台已保存的主机'
-                      : '先在上面选一台主机',
-                    onClick: () => void removeProfile(),
+                    disabled: profiles.length === 0,
+                    title: profiles.length === 0 ? '还没有可管理的主机' : '管理 / 删除 SSH 主机',
+                    onClick: () => {
+                      setError(null)
+                      setManage(true)
+                    },
                   },
                   '删除',
                 )
@@ -1204,6 +1210,65 @@ window.__ModuleLoader__.load({
                 { className: 'rs-picker-foot is-center' },
                 h(KitButton, { variant: 'outline', onClick: () => setForm(null) }, '取消'),
                 h(KitButton, { variant: 'primary', onClick: () => void addProfile() }, '保存并选用'),
+              ),
+            ),
+          ),
+        )
+      }
+
+      // Deleting a host is its own dialog: the list is the target picker, and
+      // `~/.ssh/config` rows appear with a note instead of a button so the
+      // reason they stay is visible where they are.
+      if (tab === 'ssh' && manage) {
+        rows.push(
+          h(
+            'div',
+            { key: 'manage', className: 'rs-picker-backdrop', style: { zIndex: 1050 } },
+            h(
+              'div',
+              { className: 'rs-picker-card rs-form-card', role: 'dialog', 'aria-label': '管理 SSH 主机' },
+              h(
+                'div',
+                { className: 'rs-picker-head' },
+                h('strong', { className: 'rs-picker-title' }, '管理 SSH 主机'),
+              ),
+              h(
+                'div',
+                { className: 'rs-form-body' },
+                profiles.length === 0
+                  ? h('div', { className: 'rs-flow-empty' }, '还没有主机')
+                  : h(
+                      'div',
+                      { className: 'rs-profile-list' },
+                      profiles.map((profile) =>
+                        h(
+                          'div',
+                          { key: profile.alias, className: 'rs-profile-row' },
+                          h(
+                            'div',
+                            { className: 'rs-profile-main' },
+                            h('span', { className: 'rs-profile-alias' }, profile.alias),
+                            h('span', { className: 'rs-profile-addr' }, formatHost(profile)),
+                            profile.source === 'saved'
+                              ? null
+                              : h('span', { className: 'rs-profile-tag' }, '~/.ssh/config'),
+                          ),
+                          profile.source === 'saved'
+                            ? h(
+                                KitButton,
+                                { variant: 'outline', onClick: () => void removeProfile(profile.alias) },
+                                '删除',
+                              )
+                            : h('span', { className: 'rs-profile-note' }, '在那个文件里编辑'),
+                        ),
+                      ),
+                    ),
+                error === null ? null : h('div', { className: 'rs-flow-error' }, error),
+              ),
+              h(
+                'div',
+                { className: 'rs-picker-foot is-center' },
+                h(KitButton, { variant: 'primary', onClick: () => setManage(false) }, '关闭'),
               ),
             ),
           ),

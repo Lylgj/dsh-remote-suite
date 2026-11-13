@@ -108,7 +108,6 @@ export function apply(ctx, config = {}) {
     config,
     spawnPty: createPtySpawner(ctx),
     savedProfiles: async () => (await loadState()).profiles,
-    hiddenProfiles: async () => (await loadState()).hiddenProfiles,
   })
   const api = createApi({ registry })
   const disposers = [ctx.tools.register(createRemoteTool({ registry, config }))]
