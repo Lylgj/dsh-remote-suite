@@ -476,13 +476,29 @@ window.__ModuleLoader__.load({
       .rs-form-card { width: min(560px, 92vw); height: auto; }
       .rs-form-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 12px; overflow: auto; }
       .rs-form-body .rs-flow-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-      .rs-flow-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .rs-flow-row { --rs-btn: 88px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+      /* The target row (select + 新增 + 删除) and the path row (input + 上级 +
+         主目录) line up only when the button columns are fixed, so both are
+         grids of "1fr 88px 88px"; a row with no buttons spans all of it. */
+      .rs-flow-row.is-grid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rs-btn) var(--rs-btn); }
+      .rs-flow-row.is-grid.is-solo { grid-template-columns: minmax(0, 1fr); }
       .rs-flow-row > input, .rs-flow-row > select, .rs-flow-row > button, .rs-flow-row > .rs-select,
       .rs-flow input, .rs-flow select, .rs-flow .rs-select { height: 34px; box-sizing: border-box;
-        padding: 0 10px; font: inherit; line-height: 32px; }
-      .rs-flow-row > button { padding: 0 12px; }
+        padding: 0 14px; font: inherit; line-height: 32px; }
+      /* Pill fields: select and path input read as one family. Both borders are
+         declared here instead of inherited, because a control that inherits its
+         border loses it to the host's focus ring the moment it is clicked. */
+      .rs-flow-row > input, .rs-flow-row > select, .rs-flow-row > .rs-select {
+        border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+        border-radius: 999px; background: transparent; color: inherit; }
+      /* A visible focus ring for the two pill fields, since the border above no
+         longer changes on focus and a bare select otherwise shows nothing. */
+      .rs-flow-row > input:focus-visible, .rs-flow-row > select:focus-visible {
+        outline: 2px solid color-mix(in srgb, currentColor 30%, transparent); outline-offset: 0; }
+      .rs-flow-row > button { padding: 0 12px; min-width: var(--rs-btn); }
       .rs-flow-row > select { line-height: normal; }
-      .rs-flow-row > :first-child { flex: 1; min-width: 0; }
+      .rs-flow-row > :first-child { min-width: 0; }
+      .rs-flow-row:not(.is-grid) > :first-child { flex: 1; }
       .rs-flow-form { display: flex; flex-direction: column; gap: 8px; padding: 10px;
                 border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 8px;
                 background: color-mix(in srgb, currentColor 3%, transparent); }
@@ -1098,7 +1114,12 @@ window.__ModuleLoader__.load({
         rows.push(
           h(
             'div',
-            { key: 'target', className: 'rs-flow-row' },
+            {
+              key: 'target',
+              // `is-solo` when the category offers no buttons: the select then
+              // spans the full width instead of stopping short of a gap.
+              className: tab === 'ssh' ? 'rs-flow-row is-grid' : 'rs-flow-row is-grid is-solo',
+            },
             h(
               'select',
               { className: 'rs-select', value: choiceValue, onChange: (event) => pickChoice(event.target.value) },
@@ -1278,7 +1299,7 @@ window.__ModuleLoader__.load({
       rows.push(
         h(
           'div',
-          { key: 'path', className: 'rs-flow-row' },
+          { key: 'path', className: 'rs-flow-row is-grid' },
           h(KitInput, {
             value: path,
             spellCheck: false,
