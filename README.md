@@ -34,6 +34,8 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
 
 需要 DeepSeek Harness `>= 0.2.1-rc.2`。
 
+插件的 npm 包名是 `@lylgj/dsh-remote-suite`；下面两种装法都是让 DSH 从 npm 源拉取它。装插件要走 DSH 自己的流程（界面或 `dsh plugin`），直接 `npm install` 不会被识别成插件。
+
 **在界面里装（推荐）**
 
 左侧栏 →「插件」→「添加插件」，在「包名或地址」里填：
