@@ -37,7 +37,7 @@ vm.createContext(sandbox)
 vm.runInContext(source, sandbox, { filename: 'client.js' })
 
 assert.ok(loaded, 'client.js must call window.__ModuleLoader__.load')
-assert.equal(loaded.id, 'dsh-remote-suite')
+assert.equal(loaded.id, '@lylgj/dsh-remote-suite')
 
 // Stand-ins for the host UI kit. They render semantics, not looks: the dialog
 // must go through Modal/Button/Input/SegmentedControl rather than raw elements,

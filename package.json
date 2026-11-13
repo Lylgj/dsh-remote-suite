@@ -37,7 +37,8 @@
     "docs"
   ],
   "engines": {
-    "dsh": ">=0.2.1-rc.2"
+    "node": ">=20",
+    "dsh": ">=0.2.2-rc.1"
   },
   "keywords": [
     "dsh",
@@ -52,6 +53,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.2-alpha.3": "incompatible",
+        "0.2.2-rc.1": "compatible",
+        "0.2.2-rc.2": "unknown"
+      }
     },
     "client": {
       "platform": "web",
