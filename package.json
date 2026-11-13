@@ -27,6 +27,7 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
+    "screenshots.json",
     "docs"
   ],
   "engines": {

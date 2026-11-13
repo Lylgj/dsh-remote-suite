@@ -22,6 +22,14 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
 - **镜像同步**：把远端目录拉到本地一份，供桌面编辑器、搜索和 `git` 使用；32 KB 分块传输，远端不需要
   `tar` / `rsync`，二进制文件完好。
 
+## 界面
+
+<p>
+  <img src="docs/assets/screenshots/local-workspace.png" alt="本机工作区：盘符切换与目录浏览" width="32%">
+  <img src="docs/assets/screenshots/ssh-workspace.png" alt="远程 SSH 工作区：选择目标、新增与删除主机" width="32%">
+  <img src="docs/assets/screenshots/ssh-new-host.png" alt="新增 SSH 主机：别名可以用中文，私钥可浏览选择" width="32%">
+</p>
+
 ## 安装
 
 需要 DeepSeek Harness `>= 0.2.1-rc.2`、Node `>= 20`。
