@@ -1,5 +1,8 @@
 # dsh-remote-suite
 
+[![npm](https://img.shields.io/npm/v/@lylgj/dsh-remote-suite?color=6366f1)](https://www.npmjs.com/package/@lylgj/dsh-remote-suite)
+[![license](https://img.shields.io/npm/l/@lylgj/dsh-remote-suite?color=3b82f6)](LICENSE)
+
 <img src="docs/assets/banner.png" alt="dsh-remote-suite：WSL、SSH、Docker 与远程守护进程，一个工作区列表、一个 remote 工具" width="100%">
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的远程工作区插件：把**本机、WSL 发行版、
