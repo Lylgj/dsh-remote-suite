@@ -1107,7 +1107,7 @@ window.__ModuleLoader__.load({
           const home = result.home || 'C:\\'
           const roots = await call('roots').catch(() => [])
           setFilePick({ dir: home, entries: [], error: null, roots: Array.isArray(roots) ? roots : [] })
-          // Start where the field already points: a key outside ~/.ssh (D:\lgj\ssh
+          // Start where the field already points: a key outside ~/.ssh (D:\keys
           // on this machine, say) is then one click away instead of five.
           const typed = form === null ? '' : form.identityFile.trim()
           const typedDir = typed === '' ? '' : parentOf(typed)
