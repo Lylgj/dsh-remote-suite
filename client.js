@@ -820,7 +820,7 @@ window.__ModuleLoader__.load({
             : tab === 'ssh'
               ? profiles.map((profile) => ({
                   value: profile.alias,
-                  label: `${profile.alias} · ${formatHost(profile)}${profile.source === 'saved' ? '（新增）' : ''}`,
+                  label: `${profile.alias} · ${formatHost(profile)}`,
                 }))
               : []
 
@@ -987,6 +987,28 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // Hosts read from `~/.ssh/config` belong to that file, so only the ones
+      // saved from this dialog can be deleted here.
+      const selectedProfile =
+        tab === 'ssh' ? profiles.find((profile) => profile.alias === choiceValue) : undefined
+      const canRemoveProfile = selectedProfile !== undefined && selectedProfile.source === 'saved'
+
+      const removeProfile = async () => {
+        if (!canRemoveProfile) return
+        const alias = selectedProfile.alias
+        const question = `删除已保存的 SSH 主机「${alias}」？`
+        if (typeof window === 'undefined' || typeof window.confirm !== 'function' || !window.confirm(question)) return
+        try {
+          setError(null)
+          await call('ssh-profile-remove', { alias })
+          const list = await call('ssh-profiles')
+          setProfiles(Array.isArray(list) ? list : [])
+          setChoice('')
+        } catch (e) {
+          setError(String(e.message || e))
+        }
+      }
+
       const listFiles = async (dir) => {
         setPickInput(dir)
         try {
@@ -1037,7 +1059,6 @@ window.__ModuleLoader__.load({
         setForm({ ...form, identityFile: value })
         setFilePick(null)
       }
-
       const chooseFile = (entry) => {
         if (entry.type === 'dir') {
           void listFiles(entry.path)
@@ -1091,6 +1112,20 @@ window.__ModuleLoader__.load({
                   '＋ 新增',
                 )
               : null,
+            // Delete sits next to add so a mistyped host is one click from gone.
+            // Disabled for `~/.ssh/config` entries, which this dialog may not edit.
+            tab === 'ssh'
+              ? h(
+                  KitButton,
+                  {
+                    variant: 'outline',
+                    disabled: !canRemoveProfile,
+                    title: canRemoveProfile ? '删除这台已保存的主机' : '「~/.ssh/config」里的主机在这里不能删除',
+                    onClick: () => void removeProfile(),
+                  },
+                  '删除',
+                )
+              : null,
           ),
         )
       }
@@ -1130,7 +1165,7 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { className: 'rs-flow-grid' },
-                  field('alias', '别名', '如 云服务器 或 prod-1'),
+                  field('alias', '别名', '如 云服务器'),
                   field('hostname', '主机', '主机名或 IP'),
                   field('user', '用户', '可空'),
                   field('port', '端口', '默认 22'),

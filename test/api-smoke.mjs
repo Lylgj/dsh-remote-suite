@@ -109,8 +109,11 @@ try {
   assert.equal(saved.source, undefined)
   const listed = await api['ssh-profiles']()
   assert.ok(listed.some((p) => p.alias === 'smoke-ssh' && p.source === 'saved'))
-  await api['ssh-profile-remove']({ alias: 'smoke-ssh' })
+  const removed = await api['ssh-profile-remove']({ alias: 'smoke-ssh' })
+  assert.equal(removed.removed, 'smoke-ssh')
+  assert.equal(typeof removed.secretRemoved, 'boolean')
   assert.ok(!(await api['ssh-profiles']()).some((p) => p.alias === 'smoke-ssh'))
+  await assert.rejects(() => api['ssh-profile-remove']({ alias: 'smoke-ssh' }), /no saved profile named/)
   await assert.rejects(() => api['ssh-profile-add']({ alias: 'bad alias!', hostname: 'x' }), /alias must be/)
   // The alias is an id inside this plugin only, so a Chinese name is a valid
   // alias: it never becomes a `Host` line in ~/.ssh/config.
