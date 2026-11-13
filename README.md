@@ -36,16 +36,22 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
 
 **在界面里装（推荐）**
 
-左侧栏 →「插件」→「添加插件」，在「包名或地址」里填仓库地址：
+左侧栏 →「插件」→「添加插件」，在「包名或地址」里填：
 
 ```
-https://github.com/Lylgj/dsh-remote-suite
+@lylgj/dsh-remote-suite
 ```
 
 点「安装」，装完**完全重启** DeepSeek Harness（不是刷新页面）。之后每个 agent preset 会拿到 `remote`
 工具，「添加工作区」换成插件的四个标签页。
 
 **用命令行装**
+
+```powershell
+dsh plugin --profile desktop add @lylgj/dsh-remote-suite
+```
+
+npm 源不通时可以直接从仓库装（内容相同，但插件页不会显示版本更新）：
 
 ```powershell
 dsh plugin --profile desktop add github:Lylgj/dsh-remote-suite
@@ -60,7 +66,7 @@ dsh plugin --profile desktop add "D:\你的路径\dsh-remote-suite"
 ```
 
 本地目录必须写绝对路径。这种方式装进去的是目录副本，改完源码要重装一次（或把文件同步到 profile 的
-`node_modules\dsh-remote-suite`）再重启。
+`node_modules\@lylgj\dsh-remote-suite`）再重启。
 
 以前装过同类插件的话先在「插件」页卸载——它们会注册同名工具或抢占侧栏：
 `dsh-wsl-tool`、`dsh-wsl-workspace`、`@zhangfengshun/dsh-remote-ssh`。

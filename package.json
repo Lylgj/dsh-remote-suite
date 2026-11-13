@@ -1,10 +1,13 @@
 {
-  "name": "dsh-remote-suite",
+  "name": "@lylgj/dsh-remote-suite",
   "version": "0.1.0",
   "description": "WSL, SSH, Docker and remote-daemon workspaces in one DeepSeek Harness plugin: one Backend seam, one sidebar entry, one `remote` tool.",
   "type": "module",
   "main": "index.js",
   "author": "Lylgj",
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://github.com/Lylgj/dsh-remote-suite#readme",
   "repository": {
     "type": "git",
