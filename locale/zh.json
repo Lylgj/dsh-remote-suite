@@ -1,7 +1,6 @@
 {
   "meta": {
     "title": "远程工作区",
-    "description": "本机、WSL、SSH、Docker，一个列表统一管理。",
-    "detail": "docs/使用指南.md"
+    "description": "本机、WSL、SSH、Docker，一个列表统一管理。"
   }
 }
