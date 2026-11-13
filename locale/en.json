@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Remote Workspaces",
+    "description": "Local, WSL, SSH, Docker and remote-daemon workspaces in one workspace list and one remote tool.",
+    "detail": "README.md"
+  }
+}

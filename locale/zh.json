@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "远程工作区",
+    "description": "本机、WSL、SSH、Docker 与远程守护进程，统一到一个工作区列表和一个 remote 工具。",
+    "detail": "docs/使用指南.md"
+  }
+}

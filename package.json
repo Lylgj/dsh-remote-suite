@@ -17,6 +17,7 @@
     ".": "./index.js",
     "./client": "./client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*": "./locale/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -24,6 +25,7 @@
     "lib",
     "client.js",
     "assets",
+    "locale",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
