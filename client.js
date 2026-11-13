@@ -482,23 +482,43 @@ window.__ModuleLoader__.load({
          grids of "1fr 88px 88px"; a row with no buttons spans all of it. */
       .rs-flow-row.is-grid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rs-btn) var(--rs-btn); }
       .rs-flow-row.is-grid.is-solo { grid-template-columns: minmax(0, 1fr); }
-      .rs-flow-row > input, .rs-flow-row > select, .rs-flow-row > button, .rs-flow-row > .rs-select,
-      .rs-flow input, .rs-flow select, .rs-flow .rs-select { height: 34px; box-sizing: border-box;
-        padding: 0 14px; font: inherit; line-height: 32px; }
-      /* Pill fields: select and path input read as one family. Both borders are
-         declared here instead of inherited, because a control that inherits its
-         border loses it to the host's focus ring the moment it is clicked. */
-      .rs-flow-row > input, .rs-flow-row > select, .rs-flow-row > .rs-select {
-        border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+      .rs-flow-row > input, .rs-flow-row > button, .rs-flow-row > .rs-select-wrap,
+      .rs-flow input, .rs-flow select { height: 34px; box-sizing: border-box; font: inherit; }
+      .rs-flow input, .rs-flow select { padding: 0 10px; }
+      .rs-flow-row > input { padding: 0 14px; }
+      /* Pill fields: the path input and the target select read as one family, and
+         both borders are declared here instead of inherited, because a control
+         that inherits its border loses it to the host's focus ring when clicked. */
+      .rs-flow-row > input { border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
         border-radius: 999px; background: transparent; color: inherit; }
-      /* A visible focus ring for the two pill fields, since the border above no
-         longer changes on focus and a bare select otherwise shows nothing. */
-      .rs-flow-row > input:focus-visible, .rs-flow-row > select:focus-visible {
+      .rs-flow-row > input:focus-visible {
         outline: 2px solid color-mix(in srgb, currentColor 30%, transparent); outline-offset: 0; }
+      /* A native select draws its arrow a few pixels from the edge and will not
+         move it, so the box is a wrapper and the chevron is ours: it can sit
+         further in, and the pill keeps its border while the dropdown is open. */
+      .rs-flow-row > .rs-select-wrap { position: relative; display: flex; align-items: center;
+        min-width: 0; border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+        border-radius: 999px; background: transparent; color: inherit; }
+      .rs-flow-row > .rs-select-wrap > select { appearance: none; -webkit-appearance: none;
+        flex: 1; min-width: 0; height: 100%; padding: 0 36px 0 14px; border: 0; border-radius: inherit;
+        background: transparent; color: inherit; font: inherit; line-height: normal; cursor: pointer; }
+      .rs-flow-row > .rs-select-wrap > select:focus { outline: none; }
+      .rs-flow-row > .rs-select-wrap:focus-within {
+        outline: 2px solid color-mix(in srgb, currentColor 30%, transparent); outline-offset: 0; }
+      .rs-select-caret { position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+        display: flex; align-items: center; pointer-events: none; opacity: 0.6; }
       .rs-flow-row > button { padding: 0 12px; min-width: var(--rs-btn); }
-      .rs-flow-row > select { line-height: normal; }
       .rs-flow-row > :first-child { min-width: 0; }
       .rs-flow-row:not(.is-grid) > :first-child { flex: 1; }
+      /* The local category has no target to choose, so it shows its drives in that
+         same slot: same 34px height, same pill, so the dialog does not jump. */
+      .rs-drives { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+      .rs-drive { height: 34px; min-width: 64px; padding: 0 16px; box-sizing: border-box;
+        border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 999px;
+        background: transparent; color: inherit; font: inherit; cursor: pointer; }
+      .rs-drive:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+      .rs-drive.is-active { background: color-mix(in srgb, currentColor 14%, transparent);
+        border-color: color-mix(in srgb, currentColor 36%, transparent); }
       .rs-flow-form { display: flex; flex-direction: column; gap: 8px; padding: 10px;
                 border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 8px;
                 background: color-mix(in srgb, currentColor 3%, transparent); }
@@ -511,10 +531,13 @@ window.__ModuleLoader__.load({
       .rs-flow-actions { display: flex; justify-content: center; gap: 10px; padding: 6px 0 2px; margin-top: auto; }
       .rs-picker-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
         justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.38); }
-      .rs-picker-card { width: min(560px, 92vw); max-height: min(560px, 84vh); display: flex;
-        flex-direction: column; overflow: hidden; border-radius: 12px;
+      .rs-picker-card { width: min(560px, 92vw); height: min(560px, 84vh); max-height: min(560px, 84vh);
+        display: flex; flex-direction: column; overflow: hidden; border-radius: 12px;
         border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
         background: var(--dsh-surface, #ffffff); color: inherit; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28); }
+      /* Dialogs that size to their content (forms, the host list) opt out, so a
+         long name never gets a scrollbar in a box that had room for it. */
+      .rs-picker-card.rs-form-card { height: auto; }
       .rs-picker-drives { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0; }
       .rs-picker-drive { border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
         background: transparent; color: inherit; font: inherit; font-size: 12px; padding: 2px 8px;
@@ -527,6 +550,11 @@ window.__ModuleLoader__.load({
       .rs-picker-dir { font-size: 11px; opacity: 0.62; overflow: hidden;
         text-overflow: ellipsis; white-space: nowrap; }
       .rs-picker-list { flex: 1; min-height: 260px; max-height: 380px; overflow: auto; padding: 4px; }
+      /* Inside a fixed-height card the list takes the leftover space instead of
+         stopping at 380px, so the file picker keeps one size from the first
+         listing to the next (a short ~/.ssh used to make it grow when a drive
+         with many folders was opened). */
+      .rs-picker-card > .rs-picker-list { flex: 1 1 auto; min-height: 0; max-height: none; }
       .rs-picker-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 12px;
         border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
       .rs-picker-foot.is-center { justify-content: center; }
@@ -812,6 +840,7 @@ window.__ModuleLoader__.load({
       // The manage dialog lists every known host so the delete target is chosen
       // by name rather than by whatever the select happens to be showing.
       const [manage, setManage] = React.useState(false)
+      const [roots, setRoots] = React.useState([])
       // This component is the plugin's only visible surface now, so it pulls the
       // target list itself instead of relying on the (unmounted) panel.
       React.useEffect(() => {
@@ -824,6 +853,12 @@ window.__ModuleLoader__.load({
           .catch((e) => {
             if (alive) setError(String(e.message || e))
           })
+        // The local category chooses a drive where the others choose a target.
+        call('roots')
+          .then((list) => {
+            if (alive) setRoots(Array.isArray(list) ? list : [])
+          })
+          .catch(() => {})
         call('ssh-profiles')
           .then((list) => {
             if (alive) setProfiles(Array.isArray(list) ? list : [])
@@ -926,6 +961,13 @@ window.__ModuleLoader__.load({
         }
         void goHome()
       }, [open, tab, choiceValue])
+
+      // `C:\` and `C:/` and `C:` are the same drive; compare them that way so the
+      // active chip stays lit whichever form the API handed back.
+      const sameRoot = (a, b) => {
+        const normal = (value) => String(value || '').replace(/[\\/]+$/, '').toLowerCase()
+        return normal(a) !== '' && normal(a) === normal(b)
+      }
 
       const parentOf = (value) => {
         if (value === '' || value === '/' || /^[A-Za-z]:[\\/]$/.test(value)) return value
@@ -1121,14 +1163,33 @@ window.__ModuleLoader__.load({
               className: tab === 'ssh' ? 'rs-flow-row is-grid' : 'rs-flow-row is-grid is-solo',
             },
             h(
-              'select',
-              { className: 'rs-select', value: choiceValue, onChange: (event) => pickChoice(event.target.value) },
+              'div',
+              { className: 'rs-select-wrap' },
               h(
-                'option',
-                { value: '' },
-                targets === null ? '加载中…' : candidates.length === 0 ? emptyLabel : '选择目标…',
+                'select',
+                { value: choiceValue, onChange: (event) => pickChoice(event.target.value) },
+                h(
+                  'option',
+                  { value: '' },
+                  targets === null ? '加载中…' : candidates.length === 0 ? emptyLabel : '选择目标…',
+                ),
+                candidates.map((option) => h('option', { key: option.value, value: option.value }, option.label)),
               ),
-              candidates.map((option) => h('option', { key: option.value, value: option.value }, option.label)),
+              h(
+                'span',
+                { className: 'rs-select-caret', 'aria-hidden': 'true' },
+                h(
+                  'svg',
+                  { width: 11, height: 11, viewBox: '0 0 11 11', fill: 'none' },
+                  h('path', {
+                    d: 'M2.2 3.9 5.5 7.2 8.8 3.9',
+                    stroke: 'currentColor',
+                    strokeWidth: 1.4,
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round',
+                  }),
+                ),
+              ),
             ),
             tab === 'ssh'
               ? h(
@@ -1161,6 +1222,33 @@ window.__ModuleLoader__.load({
                   '删除',
                 )
               : null,
+          ),
+        )
+      } else {
+        // Local has nothing to pick a target from, so the drives take that slot.
+        // Same height and shape as the select above it, so switching tabs does
+        // not move the path row.
+        rows.push(
+          h(
+            'div',
+            { key: 'drives', className: 'rs-flow-row is-grid is-solo' },
+            h(
+              'div',
+              { className: 'rs-drives' },
+              roots.map((root) =>
+                h(
+                  'button',
+                  {
+                    key: root.path,
+                    type: 'button',
+                    className: `rs-drive${sameRoot(root.path, path) ? ' is-active' : ''}`,
+                    title: root.path,
+                    onClick: () => void browse(root.path),
+                  },
+                  root.label,
+                ),
+              ),
+            ),
           ),
         )
       }
