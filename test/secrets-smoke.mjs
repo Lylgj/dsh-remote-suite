@@ -14,15 +14,15 @@ process.env.DSH_REMOTE_SUITE_SECRETS = join(dir, 'secrets.json')
 
 const { loadSecrets, lookupPassword, removePassword, secretKey, setPassword } = await import('../lib/secrets.js')
 
-const profile = { alias: 'box', hostname: '192.168.81.77', user: 'liguojin', port: 22 }
-assert.equal(secretKey(profile), 'liguojin@192.168.81.77:22')
+const profile = { alias: 'box', hostname: '192.0.2.10', user: 'tester', port: 22 }
+assert.equal(secretKey(profile), 'tester@192.0.2.10:22')
 
 assert.equal(await lookupPassword(profile), undefined)
 await setPassword(profile, 'first-secret')
 assert.equal(await lookupPassword(profile), 'first-secret')
 
 let secrets = await loadSecrets()
-assert.equal(secrets['liguojin@192.168.81.77:22'], 'first-secret')
+assert.equal(secrets['tester@192.0.2.10:22'], 'first-secret')
 console.log('ok  set + lookup by key')
 
 // The same user@host on another port still finds the password; a different

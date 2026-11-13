@@ -1,7 +1,7 @@
 // Daemon (persistent-session) smoke test against a real SSH host.
 //
 //   DSH_SSH_IDENTITY=~/.ssh/key node test/daemon-smoke.mjs
-//   DSH_SSH_DAEMON_TEST_HOST=192.168.81.77 DSH_SSH_DAEMON_TEST_USER=liguojin node test/daemon-smoke.mjs
+//   DSH_SSH_DAEMON_TEST_HOST=192.0.2.10 DSH_SSH_DAEMON_TEST_USER=tester node test/daemon-smoke.mjs
 //
 // A `daemon:<alias>` target is the same SSH host, but every `exec` shares one
 // non-interactive bash channel: `cd`, variables and shell functions survive

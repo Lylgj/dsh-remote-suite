@@ -1,7 +1,7 @@
 // Multi-hop SSH smoke test: a ProxyJump chain through the same machine.
 //
 //   DSH_SSH_IDENTITY=~/.ssh/key node test/ssh-jump-smoke.mjs
-//   DSH_SSH_JUMP_TEST_HOST=192.168.81.77 DSH_SSH_JUMP_TEST_USER=liguojin node test/ssh-jump-smoke.mjs
+//   DSH_SSH_JUMP_TEST_HOST=192.0.2.10 DSH_SSH_JUMP_TEST_USER=tester node test/ssh-jump-smoke.mjs
 //
 // The test writes a temporary `~/.ssh/config` with two aliases (`jump` and
 // `target`) aimed at the same host, so it needs a machine you can already log

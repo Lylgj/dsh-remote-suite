@@ -30,6 +30,7 @@
     "README.md",
     "LICENSE",
     "screenshots.json",
+    "THIRD-PARTY-NOTICES.md",
     "docs"
   ],
   "engines": {
