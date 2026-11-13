@@ -20,7 +20,7 @@
 //   - `main` is keyed by that same id; the two seats appear together or not at all.
 
 window.__ModuleLoader__.load({
-  id: 'dsh-remote-suite',
+  id: '@lylgj/dsh-remote-suite',
   factory: (require) => {
     const React = require('react')
     const h = React.createElement
