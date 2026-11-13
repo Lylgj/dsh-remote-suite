@@ -50,8 +50,9 @@ dsh plugin --profile desktop remove @zhangfengshun/dsh-remote-ssh
 - **远程 SSH / Remote SSH** —— 主机来自 `~/.ssh/config` 以及在此新增的条目（别名、主机、用户、
   端口、密钥文件、可选密码，存入 `secrets.json`）；同样是镜像目录那一套，`remote` 工具以
   `ssh:<别名>` 或 `daemon:<别名>` 寻址。别名可用中文（只要不含空格、冒号、斜杠），它只是本插件
-  内部的标识，不会写回 `~/.ssh/config`。选中一台**在本对话框新增**的主机后可以点「删除」把它连同
-  存储的密码一起移除；`~/.ssh/config` 里的主机不在此列（删掉配置行即可）。
+  内部的标识，不会写回 `~/.ssh/config`。在下拉里选中一台主机后点「删除」即可移除：对话框里新增的
+  主机连同存储的密码一起删掉；`~/.ssh/config` 里的主机只从列表里隐藏（那是用户自己的文件，插件
+  不会改写它），从 `state.json` 的 `hiddenProfiles` 里去掉该别名即可恢复。
 
 把路径交回 Host 之前，浏览器半会先调用 `prepare-path`：校验目标目录存在，并返回 DSH 应当打开的路径
 （路径本身、WSL UNC 路径，或刚创建好的镜像目录）。

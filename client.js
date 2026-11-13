@@ -987,16 +987,20 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // Hosts read from `~/.ssh/config` belong to that file, so only the ones
-      // saved from this dialog can be deleted here.
+      // Both kinds of host can be removed from the list: a saved one really is
+      // deleted, while a `~/.ssh/config` one is only hidden here — that file is
+      // the user's own, so the plugin never rewrites it.
       const selectedProfile =
         tab === 'ssh' ? profiles.find((profile) => profile.alias === choiceValue) : undefined
-      const canRemoveProfile = selectedProfile !== undefined && selectedProfile.source === 'saved'
+      const canRemoveProfile = selectedProfile !== undefined
+      const selectedFromConfig = canRemoveProfile && selectedProfile.source !== 'saved'
 
       const removeProfile = async () => {
         if (!canRemoveProfile) return
         const alias = selectedProfile.alias
-        const question = `删除已保存的 SSH 主机「${alias}」？`
+        const question = selectedFromConfig
+          ? `从列表里移除「${alias}」？\n\n它来自 ~/.ssh/config，只会从本插件隐藏，不会改动那个文件。`
+          : `删除已保存的 SSH 主机「${alias}」？\n\n它和存着的密码都会被删掉。`
         if (typeof window === 'undefined' || typeof window.confirm !== 'function' || !window.confirm(question)) return
         try {
           setError(null)
@@ -1120,7 +1124,11 @@ window.__ModuleLoader__.load({
                   {
                     variant: 'outline',
                     disabled: !canRemoveProfile,
-                    title: canRemoveProfile ? '删除这台已保存的主机' : '「~/.ssh/config」里的主机在这里不能删除',
+                    title: canRemoveProfile
+                      ? selectedFromConfig
+                        ? '从列表里移除（不改动 ~/.ssh/config）'
+                        : '删除这台已保存的主机'
+                      : '先在上面选一台主机',
                     onClick: () => void removeProfile(),
                   },
                   '删除',

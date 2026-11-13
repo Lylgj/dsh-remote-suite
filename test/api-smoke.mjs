@@ -14,6 +14,12 @@ const stateFile = path.join(os.tmpdir(), `remote-suite-api-${process.pid}.json`)
 process.env.DSH_REMOTE_SUITE_STATE = stateFile
 await fs.rm(stateFile, { force: true })
 
+// A config of our own: deleting a `~/.ssh/config` host must hide it without
+// touching that file, and the real one on this machine is not ours to edit.
+const configFile = path.join(os.tmpdir(), `remote-suite-api-ssh-${process.pid}`)
+process.env.DSH_SSH_CONFIG = configFile
+await fs.writeFile(configFile, 'Host box\n  HostName 192.0.2.9\n  User tester\n')
+
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-suite-api-'))
 const backend = createLocalBackend()
 const registry = {
@@ -113,14 +119,22 @@ try {
   assert.equal(removed.removed, 'smoke-ssh')
   assert.equal(typeof removed.secretRemoved, 'boolean')
   assert.ok(!(await api['ssh-profiles']()).some((p) => p.alias === 'smoke-ssh'))
-  await assert.rejects(() => api['ssh-profile-remove']({ alias: 'smoke-ssh' }), /no saved profile named/)
+  await assert.rejects(() => api['ssh-profile-remove']({ alias: 'smoke-ssh' }), /no SSH host named/)
   await assert.rejects(() => api['ssh-profile-add']({ alias: 'bad alias!', hostname: 'x' }), /alias must be/)
   // The alias is an id inside this plugin only, so a Chinese name is a valid
   // alias: it never becomes a `Host` line in ~/.ssh/config.
   const chinese = await api['ssh-profile-add']({ alias: '云服务器', hostname: '192.0.2.2' })
   assert.equal(chinese.alias, '云服务器')
   await api['ssh-profile-remove']({ alias: '云服务器' })
-  console.log('ok  ssh profiles (add / list / remove)')
+  // A host from `~/.ssh/config` is hidden, not edited: that file belongs to the
+  // user, so the plugin only stops offering the alias.
+  assert.ok((await api['ssh-profiles']()).some((p) => p.alias === 'box' && p.source === 'config'))
+  const hiddenBox = await api['ssh-profile-remove']({ alias: 'box' })
+  assert.equal(hiddenBox.source, 'config')
+  assert.equal(hiddenBox.hidden, true)
+  assert.ok(!(await api['ssh-profiles']()).some((p) => p.alias === 'box'))
+  assert.match(await fs.readFile(configFile, 'utf8'), /Host box/)
+  console.log('ok  ssh profiles (add / list / remove / hide config host)')
 
   const remoteRegistry = {
     listTargets: async () => [{ id: 'local', kind: 'local', label: '此电脑' }],
@@ -162,6 +176,7 @@ try {
 } finally {
   await fs.rm(root, { recursive: true, force: true })
   await fs.rm(stateFile, { force: true })
+  await fs.rm(configFile, { force: true })
 }
 
 console.log('api smoke ok')
