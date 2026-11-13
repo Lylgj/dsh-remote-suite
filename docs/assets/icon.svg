@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="0.55" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="150" x2="0" y2="330">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#16233d"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect x="0" y="0" width="512" height="512" rx="112"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect x="0" y="0" width="512" height="512" fill="url(#bg)"/>
+    <circle cx="430" cy="70" r="200" fill="#ffffff" opacity="0.10"/>
+    <circle cx="60" cy="470" r="170" fill="#0b1220" opacity="0.12"/>
+
+    <!-- terminal window -->
+    <rect x="112" y="132" width="288" height="216" rx="34" fill="#ffffff" opacity="0.96"/>
+    <path d="M112 178 h288" stroke="url(#ink)" stroke-width="10" opacity="0.18"/>
+    <circle cx="150" cy="155" r="7" fill="#ef4444"/>
+    <circle cx="174" cy="155" r="7" fill="#f59e0b"/>
+    <circle cx="198" cy="155" r="7" fill="#22c55e"/>
+
+    <!-- prompt -->
+    <path d="M168 222 L214 258 L168 294" fill="none" stroke="url(#ink)" stroke-width="24"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M246 294 H320" stroke="url(#ink)" stroke-width="24" stroke-linecap="round"/>
+
+    <!-- remote hosts -->
+    <g stroke="#ffffff" stroke-width="9" stroke-linecap="round" opacity="0.95">
+      <path d="M168 400 H344" stroke-dasharray="2 26"/>
+    </g>
+    <circle cx="168" cy="400" r="14" fill="#ffffff"/>
+    <circle cx="256" cy="400" r="14" fill="#ffffff" opacity="0.75"/>
+    <circle cx="344" cy="400" r="14" fill="#ffffff" opacity="0.55"/>
+  </g>
+</svg>

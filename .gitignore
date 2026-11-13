@@ -4,6 +4,8 @@ node_modules/
 # local debug scratch (machine-specific absolute paths)
 _scan.mjs
 rs-cdp.cjs
+_shoot.mjs
+docs/assets/_*.html
 
 # DSH / build artefacts
 .dsh-gcc/

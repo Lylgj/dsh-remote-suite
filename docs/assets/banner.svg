@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" width="1280" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="0.5" stop-color="#1d4ed8"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="120" x2="0" y2="330">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#16233d"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect x="0" y="0" width="1280" height="400" rx="0"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect width="1280" height="400" fill="url(#bg)"/>
+    <circle cx="1170" cy="-60" r="330" fill="#ffffff" opacity="0.08"/>
+    <circle cx="120" cy="470" r="300" fill="#0b1220" opacity="0.16"/>
+    <rect x="0" y="0" width="640" height="400" fill="url(#fade)"/>
+
+    <!-- copy -->
+    <text x="88" y="120" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="17"
+          letter-spacing="4.5" fill="#ffffff" fill-opacity="0.72">DEEPSEEK HARNESS PLUGIN</text>
+    <text x="86" y="212" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="70"
+          font-weight="700" fill="#ffffff" letter-spacing="-1">dsh-remote-suite</text>
+    <text x="88" y="272" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="26"
+          fill="#ffffff" fill-opacity="0.88">WSL · SSH · Docker · 远程守护进程</text>
+    <text x="88" y="316" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="26"
+          fill="#ffffff" fill-opacity="0.88">一个工作区列表，一个 <tspan font-family="Consolas, monospace"
+          font-size="25">remote</tspan> 工具</text>
+
+    <!-- terminal card -->
+    <g transform="translate(760 78)">
+      <rect x="0" y="0" width="330" height="196" rx="26" fill="#ffffff" fill-opacity="0.97"/>
+      <path d="M0 44 H330" stroke="#0b1220" stroke-opacity="0.14" stroke-width="6"/>
+      <circle cx="34" cy="22" r="6" fill="#ef4444"/>
+      <circle cx="54" cy="22" r="6" fill="#f59e0b"/>
+      <circle cx="74" cy="22" r="6" fill="#22c55e"/>
+      <path d="M64 86 L104 118 L64 150" fill="none" stroke="url(#ink)" stroke-width="20"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M134 150 H196" stroke="url(#ink)" stroke-width="20" stroke-linecap="round"/>
+
+      <g stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.9">
+        <path d="M60 214 H270" stroke-dasharray="2 24"/>
+      </g>
+      <circle cx="60" cy="214" r="12" fill="#ffffff"/>
+      <circle cx="165" cy="214" r="12" fill="#ffffff" opacity="0.75"/>
+      <circle cx="270" cy="214" r="12" fill="#ffffff" opacity="0.55"/>
+    </g>
+  </g>
+</svg>

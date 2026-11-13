@@ -1,5 +1,7 @@
 # dsh-remote-suite
 
+<img src="docs/assets/banner.png" alt="dsh-remote-suite：WSL、SSH、Docker 与远程守护进程，一个工作区列表、一个 remote 工具" width="100%">
+
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的远程工作区插件：把**本机、WSL 发行版、
 SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并用**一个 `remote` 工具**统一操作它们——
 同一套参数，换目标不用换工具。

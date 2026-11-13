@@ -1,9 +1,18 @@
 {
   "name": "dsh-remote-suite",
   "version": "0.1.0",
-  "description": "One DeepSeek Harness plugin for WSL, SSH, Docker and remote-daemon workspaces: a single Backend seam, one sidebar entry, one tool namespace.",
+  "description": "WSL, SSH, Docker and remote-daemon workspaces in one DeepSeek Harness plugin: one Backend seam, one sidebar entry, one `remote` tool.",
   "type": "module",
   "main": "index.js",
+  "author": "Lylgj",
+  "homepage": "https://github.com/Lylgj/dsh-remote-suite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lylgj/dsh-remote-suite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Lylgj/dsh-remote-suite/issues"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -17,7 +26,8 @@
     "assets",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs"
   ],
   "engines": {
     "dsh": ">=0.2.1-rc.2"
