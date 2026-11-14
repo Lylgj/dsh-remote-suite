@@ -20,7 +20,8 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
 - **多跳登录**：`ProxyJump` 支持任意跳数，别名或 `user@host:port` 都行。
 - **常驻会话**：`daemon:<别名>` 让 `cd`、`export`、shell 函数跨命令保留——顺手可以在远端起一个
   `dsh web`。
-- **Docker**：只依赖 `docker` CLI，Docker Desktop、`DOCKER_HOST`、`podman` / `nerdctl` 都能用。
+- **Docker**：只依赖 `docker` CLI，Docker Desktop、`DOCKER_HOST`、`podman` / `nerdctl` 都能用；
+  工作区里的 `.dsh-docker.json` 标记让 `@lylgj/dsh-terminal` 打开终端时直接 `docker exec -it` 进容器。
 - **WSL**：工作区落在 `\\wsl.localhost\<发行版>\<路径>`，走 DSH 原生文件树，不经过镜像。
 - **镜像同步**：把远端目录拉到本地一份，供桌面编辑器、搜索和 `git` 使用；32 KB 分块传输，远端不需要
   `tar` / `rsync`，二进制文件完好。
