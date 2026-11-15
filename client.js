@@ -6,24 +6,42 @@
 // and the client UI primitives declared in package.json's `dsh.client.inject`.
 //
 // What it contributes:
-//   - one rail entry in the left sidebar (`sidebar.panellist`), whose panel is
-//     the target switcher, saved workspaces and the file tree, and
-//   - the `main` seat under the same key: editor tabs plus a command console.
+//   - a full-screen remote workbench (`shell.overlay`): target switcher, saved
+//     workspaces, a file tree with create/rename/delete, editor tabs with line
+//     numbers and highlighting, a real terminal and port forwarding, and
+//   - the way into it: a "远程" entry in the left rail (`sidebar.panellist`),
+//     drawn as the same accent-dot capsule the composer pill used to be, plus
+//     the Ctrl/Cmd+` shortcut. The rail gives each plugin an icon-sized slot, so
+//     the capsule is scaled down to a round button rather than a wide pill.
 //
 // Everything it shows comes from the host half's JSON API (`/remote-suite/api`),
 // never from the filesystem directly, so the browser half has no idea whether a
 // path lives on Windows, in a WSL distribution or behind SSH.
 //
-// Layout facts (verified against dsh-wsl-tool's panel, which uses the same seats):
-//   - `sidebar.panellist` entries carry `id`, `order` and `label`, and render
-//     their own icon (there is no icon field).
-//   - `main` is keyed by that same id; the two seats appear together or not at all.
+// Layout facts (verified against the plugins installed alongside this one):
+//   - `shell.overlay` mounts a root-scoped overlay (dsh-terminal uses it for its
+//     terminal panel); the component owns its own open/closed state.
+//   - `sidebar.panellist` mounts one rail entry per plugin (dsh-stm32-toolkit and
+//     dshmarket both use it); it must be claimed with inject(), never register()
+//     directly, or the seat is not there yet.
 
 window.__ModuleLoader__.load({
   id: '@lylgj/dsh-remote-suite',
   factory: (require) => {
     const React = require('react')
     const h = React.createElement
+
+    // react-dom is optional: it is used to portal the workbench onto <body>, so
+    // a fixed overlay can escape the host frame's overflow:hidden. When the host
+    // does not expose it (or the bundle is loaded outside a DOM), the overlay
+    // simply renders in place — degraded, never broken.
+    let ReactDOM = null
+    try {
+      ReactDOM = require('react-dom')
+    } catch {
+      ReactDOM = null
+    }
+
     // Native UI kit: the add-workspace flow rides the host's own dialog so it
     // inherits the theme, typography, focus handling and Escape/backdrop close
     // behaviour instead of imitating them.
@@ -78,6 +96,137 @@ window.__ModuleLoader__.load({
       const url = new URL(path, directoryOf(base))
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
       return url.href
+    }
+
+    // Whether the workbench can be portalled onto <body>. The host frame clips
+    // its content (overflow:hidden), so a position:fixed overlay only covers the
+    // whole window when it lives outside that frame.
+    function canPortal() {
+      return (
+        ReactDOM !== null &&
+        typeof ReactDOM.createPortal === 'function' &&
+        typeof document !== 'undefined' &&
+        document.body !== undefined &&
+        document.body !== null
+      )
+    }
+
+    // Whether the page the host rendered is dark. Reading it off the body beats
+    // `prefers-color-scheme`: the host lets the reader pick a theme (or a custom
+    // one) independently of the OS, and this workbench floats right on top of it.
+    function hostIsDark() {
+      if (typeof document === 'undefined' || document.body === null) return false
+      try {
+        const background = globalThis.getComputedStyle(document.body).backgroundColor
+        const match = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(background)
+        if (match === null) {
+          return globalThis.matchMedia !== undefined && globalThis.matchMedia('(prefers-color-scheme: dark)').matches === true
+        }
+        const [r, g, b] = [Number(match[1]), Number(match[2]), Number(match[3])]
+        return 0.299 * r + 0.587 * g + 0.114 * b < 128
+      } catch {
+        return false
+      }
+    }
+
+    // xterm ships a dark palette by default, which turns the terminal into a
+    // black slab inside an otherwise light workbench. Theme it off the host
+    // instead: these two palettes are deliberately aligned with the ones the
+    // host's own terminal plugin uses, so a light DSH gets a light terminal and
+    // a dark DSH gets the same dark one users already recognise.
+    const TERM_THEME_LIGHT = {
+      background: '#ffffff',
+      foreground: '#1f2328',
+      cursor: '#1f2328',
+      cursorAccent: '#ffffff',
+      selectionBackground: '#b6d7ff',
+      black: '#24292f',
+      red: '#cf222e',
+      green: '#116329',
+      yellow: '#953800',
+      blue: '#0969da',
+      magenta: '#8250df',
+      cyan: '#1b7c83',
+      white: '#6e7781',
+      brightBlack: '#57606a',
+      brightRed: '#a40e26',
+      brightGreen: '#1a7f37',
+      brightYellow: '#9a6700',
+      brightBlue: '#218bff',
+      brightMagenta: '#a475f9',
+      brightCyan: '#3192aa',
+      brightWhite: '#8c959f',
+    }
+
+    const TERM_THEME_DARK = {
+      background: '#1b1b25',
+      foreground: '#cdd6f4',
+      cursor: '#f5e0dc',
+      cursorAccent: '#1b1b25',
+      selectionBackground: '#585b70',
+      black: '#45475a',
+      red: '#f38ba8',
+      green: '#a6e3a1',
+      yellow: '#f9e2af',
+      blue: '#89b4fa',
+      magenta: '#f5c2e7',
+      cyan: '#94e2d5',
+      white: '#bac2de',
+      brightBlack: '#585b70',
+      brightRed: '#f38ba8',
+      brightGreen: '#a6e3a1',
+      brightYellow: '#f9e2af',
+      brightBlue: '#89b4fa',
+      brightMagenta: '#f5c2e7',
+      brightCyan: '#94e2d5',
+      brightWhite: '#a6adc8',
+    }
+
+    function terminalPalette(dark) {
+      return dark ? TERM_THEME_DARK : TERM_THEME_LIGHT
+    }
+
+    // Re-read the host theme whenever it changes. The host flips a class/style on
+    // <body> when the reader picks another theme, and `prefers-color-scheme` covers
+    // the case where DSH follows the OS instead.
+    function watchHostTheme(onChange) {
+      if (typeof document === 'undefined' || document.body === null) return () => {}
+      const update = () => {
+        try {
+          onChange(hostIsDark())
+        } catch (error) {
+          void error
+        }
+      }
+      update()
+      let observer = null
+      try {
+        if (typeof MutationObserver !== 'undefined') {
+          observer = new MutationObserver(update)
+          observer.observe(document.body, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] })
+        }
+      } catch (error) {
+        observer = null
+      }
+      let media = null
+      try {
+        media = globalThis.matchMedia !== undefined ? globalThis.matchMedia('(prefers-color-scheme: dark)') : null
+        if (media !== null && typeof media.addEventListener === 'function') media.addEventListener('change', update)
+      } catch (error) {
+        media = null
+      }
+      return () => {
+        try {
+          if (observer !== null) observer.disconnect()
+        } catch (error) {
+          void error
+        }
+        try {
+          if (media !== null && typeof media.removeEventListener === 'function') media.removeEventListener('change', update)
+        } catch (error) {
+          void error
+        }
+      }
     }
 
     // xterm is a same-origin asset this plugin serves, exactly like the Host's
@@ -157,8 +306,8 @@ window.__ModuleLoader__.load({
     }
 
     // ---------------------------------------------------------------------
-    // Store: one shared object, because the sidebar panel and the main seat
-    // are two separate mounts.
+    // Store: one shared object, because the composer pill, the overlay and the
+    // add-workspace flow are separate mounts that must agree on one selection.
     // ---------------------------------------------------------------------
 
     let state = {
@@ -175,7 +324,9 @@ window.__ModuleLoader__.load({
       active: -1,
       term: [],
       termBusy: false,
-      addOpen: false,
+      open: false,
+      pendingClose: null,
+      selection: null,
     }
 
     const listeners = new Set()
@@ -202,12 +353,19 @@ window.__ModuleLoader__.load({
       setState({ error: error === null ? null : error instanceof Error ? error.message : String(error) })
     }
 
-    function openDialog() {
-      setState({ addOpen: true })
+    // The whole workbench lives in the shell overlay and owns its open state.
+    // (The old `openDialog` wrote `addOpen`, which nothing ever read, so the
+    // panel's "＋ 添加工作区" was a dead click. Both now drive real state.)
+    function openWorkbench() {
+      setState({ open: true })
     }
 
-    function closeDialog() {
-      setState({ addOpen: false })
+    function closeWorkbench() {
+      setState({ open: false })
+    }
+
+    function toggleWorkbench() {
+      setState((current) => ({ open: !current.open }))
     }
 
     // ---------------------------------------------------------------------
@@ -331,9 +489,16 @@ window.__ModuleLoader__.load({
       }))
     }
 
-    function closeTab(index) {
+    function closeTab(index, force) {
       const closing = state.tabs[index]
-      if (closing !== undefined && closing.kind === 'web' && closing.forwardId !== undefined) {
+      if (closing === undefined) return
+      // An unsaved buffer is not lost on a stray click: park the request and let
+      // the editor area ask. `force` is the "discard" answer.
+      if (force !== true && closing.kind !== 'web' && closing.text !== closing.saved) {
+        setState({ pendingClose: index })
+        return
+      }
+      if (closing.kind === 'web' && closing.forwardId !== undefined) {
         // Best effort: the tab is going away either way.
         call('forward-close', { forward: closing.forwardId }).catch(() => {})
       }
@@ -342,8 +507,16 @@ window.__ModuleLoader__.load({
         let active = current.active
         if (active === index) active = Math.min(index, tabs.length - 1)
         else if (active > index) active -= 1
-        return { tabs, active }
+        return { tabs, active, pendingClose: null }
       })
+    }
+
+    /** After save, apply the close that was waiting on the unsaved buffer. */
+    async function saveThenClose(index) {
+      await saveTab(index)
+      if (state.tabs[index] !== undefined && state.tabs[index].text === state.tabs[index].saved) {
+        closeTab(index, true)
+      }
     }
 
     async function saveTab(index) {
@@ -375,6 +548,142 @@ window.__ModuleLoader__.load({
         await refreshWorkspaces()
       } catch (error) {
         setError(error)
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // File operations: create / rename / delete / refresh from the tree.
+    // They all go through the same host API the tree uses, so they behave the
+    // same on every target (the backend decides how to run them).
+    // ---------------------------------------------------------------------
+
+    // The file-op API (mkdir / rename / remove) was added to the host half after
+    // the transport methods it builds on. A desktop build that is still running
+    // an older host answers `unknown api method: mkdir`, so each op falls back
+    // to the equivalent shell command over `exec` — every backend already has
+    // exec, so create/rename/delete work on any host, connected or not.
+
+    function isWindowsPath(value) {
+      return /^[A-Za-z]:[\\/]/.test(value) || value.indexOf('\\') >= 0
+    }
+
+    function posixQuote(value) {
+      return "'" + String(value).replace(/'/g, "'\\''") + "'"
+    }
+
+    function cmdQuote(value) {
+      if (String(value).indexOf('"') >= 0) {
+        throw new Error('路径里不能包含双引号，请改名后再试')
+      }
+      return '"' + value + '"'
+    }
+
+    async function fileOp(method, payload, buildCommand) {
+      try {
+        return await call(method, payload)
+      } catch (error) {
+        const message = String(error && error.message ? error.message : error)
+        // Only the "this host is too old for the file-op API" answer is retried;
+        // real failures (permission, missing file) must surface unchanged.
+        if (!/unknown api method: *(mkdir|rename|remove)\b/.test(message)) throw error
+        const command = buildCommand()
+        const result = await call('exec', { target: payload.target, command })
+        if (result.exitCode !== 0 || result.timedOut) {
+          const detail = String(result.stderr || result.stdout || '').trim()
+          throw new Error(detail || `命令失败（exit ${result.exitCode}）`)
+        }
+        return { viaExec: true }
+      }
+    }
+
+    function parentOfPath(value) {
+      if (typeof value !== 'string' || value === '') return value
+      const cut = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'))
+      if (cut <= 0) return value
+      const head = value.slice(0, cut)
+      return head === '' ? value.slice(0, 1) : head
+    }
+
+    /** Join a directory and a name with the separator the directory already uses. */
+    function joinRemote(dir, name) {
+      const sep = dir.includes('\\') && !dir.includes('/') ? '\\' : '/'
+      const trimmed = dir.replace(/[\\/]+$/, '')
+      return trimmed === '' ? sep + name : trimmed + sep + name
+    }
+
+    async function refreshDir(dirPath) {
+      if (dirPath === null || dirPath === undefined) return
+      await loadDir(dirPath)
+    }
+
+    async function newFile(dirPath, name) {
+      const path = joinRemote(dirPath, name)
+      try {
+        await call('write', { target: state.target, path, data: '' })
+        await loadDir(dirPath)
+        await openFile(path)
+        setError(null)
+      } catch (error) {
+        setError(error)
+        throw error
+      }
+    }
+
+    async function newFolder(dirPath, name) {
+      const path = joinRemote(dirPath, name)
+      try {
+        await fileOp('mkdir', { target: state.target, path }, () =>
+          isWindowsPath(path) ? `mkdir ${cmdQuote(path)}` : `mkdir -p -- ${posixQuote(path)}`,
+        )
+        await loadDir(dirPath)
+        setState((current) => ({ expanded: { ...current.expanded, [dirPath]: true } }))
+        setError(null)
+      } catch (error) {
+        setError(error)
+        throw error
+      }
+    }
+
+    async function renameEntry(fromPath, nextName) {
+      const toPath = joinRemote(parentOfPath(fromPath), nextName)
+      if (toPath === fromPath) return
+      try {
+        await fileOp('rename', { target: state.target, from: fromPath, to: toPath }, () =>
+          isWindowsPath(toPath)
+            ? `if not exist ${cmdQuote(parentOfPath(toPath))} mkdir ${cmdQuote(parentOfPath(toPath))} & move /Y ${cmdQuote(fromPath)} ${cmdQuote(toPath)}`
+            : `mkdir -p -- ${posixQuote(parentOfPath(toPath))} && mv -- ${posixQuote(fromPath)} ${posixQuote(toPath)}`,
+        )
+        setState((current) => ({
+          tabs: current.tabs.map((tab) =>
+            tab.path === fromPath ? { ...tab, path: toPath, key: `${state.target}|${toPath}` } : tab,
+          ),
+        }))
+        await loadDir(parentOfPath(fromPath))
+        setError(null)
+      } catch (error) {
+        setError(error)
+        throw error
+      }
+    }
+
+    async function deleteEntry(path) {
+      try {
+        await fileOp('remove', { target: state.target, path, recursive: true }, () =>
+          isWindowsPath(path)
+            ? `rmdir /s /q ${cmdQuote(path)} 2>nul || del /f /q ${cmdQuote(path)}`
+            : `rm -rf -- ${posixQuote(path)}`,
+        )
+        setState((current) => ({
+          tabs: current.tabs.filter((tab) => {
+            const p = typeof tab.path === 'string' ? tab.path : ''
+            return !(p === path || p.startsWith(path + '/') || p.startsWith(path + '\\'))
+          }),
+        }))
+        await loadDir(parentOfPath(path))
+        setError(null)
+      } catch (error) {
+        setError(error)
+        throw error
       }
     }
 
@@ -410,7 +719,7 @@ window.__ModuleLoader__.load({
 
     const CSS = `
       .rs-root { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
-      .rs-workspace { display: flex; height: 100%; min-height: 0; }
+      .rs-workspace { display: flex; flex: 1 1 auto; width: 100%; min-width: 0; height: 100%; min-height: 0; }
       .rs-side { width: 280px; min-width: 200px; max-width: 46%; border-right: 1px solid var(--dsh-border, rgba(127,127,127,0.25));
                  display: flex; flex-direction: column; min-height: 0; }
       .rs-row { display: flex; align-items: center; gap: 6px; padding: 0 10px; }
@@ -434,14 +743,17 @@ window.__ModuleLoader__.load({
       .rs-chip:hover { background: var(--dsh-hover, rgba(127,127,127,0.12)); }
       .rs-x { opacity: 0.5; }
       .rs-x:hover { opacity: 1; }
-      .rs-main { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+      /* flex: 1 1 auto matters: as a row child of .rs-app-body a non-growing
+         .rs-main is sized by its content, so an editor with long lines looked
+         fine while a lone terminal collapsed to its intrinsic ~220px width. */
+      .rs-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; height: 100%; min-height: 0; }
       .rs-tabs { display: flex; align-items: stretch; gap: 2px; border-bottom: 1px solid var(--dsh-border, rgba(127,127,127,0.25));
                  padding: 0 6px; overflow-x: auto; }
       .rs-tab { display: flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
                 border-bottom: 2px solid transparent; white-space: nowrap; }
       .rs-tab.active { border-bottom-color: var(--dsh-accent, #4b8bf5); }
       .rs-tab .rs-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsh-accent, #4b8bf5); }
-      .rs-body { flex: 1; min-height: 0; display: flex; }
+      .rs-body { flex: 1; min-height: 0; min-width: 0; display: flex; }
       .rs-web { flex: 1; min-height: 0; display: flex; flex-direction: column; }
       .rs-frame { flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
       .rs-editor { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -455,12 +767,15 @@ window.__ModuleLoader__.load({
       .rs-term-cmd { color: var(--dsh-accent, #4b8bf5); }
       .rs-term-err { color: var(--dsh-danger, #e5534b); }
       .rs-term-in { display: flex; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--dsh-border, rgba(127,127,127,0.25)); }
-      .rs-term-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+      .rs-term-wrap { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0; width: 100%; }
       .rs-term-bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-size: 12px;
                 border-bottom: 1px solid var(--dsh-border, rgba(127,127,127,0.25)); }
-      .rs-xterm { flex: 1; min-height: 0; padding: 4px 6px; }
+      .rs-xterm { flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; padding: 4px 6px; box-sizing: border-box;
+                background: var(--rs-term-bg, transparent); color: var(--rs-term-fg, inherit); }
       .rs-xterm .xterm { height: 100%; }
-      .rs-xterm .xterm-viewport { background: transparent !important; }
+      .rs-xterm .xterm-viewport { background: var(--rs-term-bg, transparent) !important; }
+      .rs-theme-light { --rs-term-bg: #ffffff; --rs-term-fg: #1f2328; }
+      .rs-theme-dark { --rs-term-bg: #1b1b25; --rs-term-fg: #cdd6f4; }
       .rs-empty { padding: 24px; opacity: 0.6; font-size: 13px; }
       .rs-primary { border-color: var(--dsh-accent, #4b8bf5); color: var(--dsh-accent, #4b8bf5); }
       .rs-header-add { font-size: 14px; line-height: 1; }
@@ -583,6 +898,255 @@ window.__ModuleLoader__.load({
                 background: color-mix(in srgb, currentColor 10%, transparent); white-space: nowrap; }
       .rs-profile-note { font-size: 12px; opacity: 0.55; white-space: nowrap; }
       .rs-modal-workspace { width: min(720px, 94vw) !important; max-width: min(720px, 94vw) !important; }
+
+      /* =================================================================
+         Workbench v2 — full-screen overlay + a cleaner three-pane shell.
+         Everything below refines the older rules above (equal specificity,
+         later wins) and adds the classes the v2 components render.
+         ================================================================= */
+
+      /* The overlay: a dimmed backdrop with one large card, the way a
+         command-palette surface sits on top of the app without replacing it. */
+      .rs-overlay-backdrop {
+        position: fixed; inset: 0; z-index: 900;
+        display: flex; align-items: center; justify-content: center;
+        padding: 26px 30px;
+        background: color-mix(in srgb, #06080f 40%, transparent);
+        backdrop-filter: blur(6px) saturate(115%);
+        animation: rs-fade 120ms ease-out;
+      }
+      @keyframes rs-fade { from { opacity: 0 } to { opacity: 1 } }
+      .rs-overlay-card {
+        flex: 0 1 auto; width: 100%; max-width: 1320px;
+        height: 100%; max-height: 100%;
+        min-width: 0; min-height: 0;
+        display: flex; flex-direction: column; overflow: hidden;
+        border-radius: 16px;
+        border: 1px solid var(--dsh-border, rgba(127,127,127,0.26));
+        background: var(--dsh-surface, #fff);
+        color: inherit;
+        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.34), 0 2px 8px rgba(0, 0, 0, 0.12);
+        animation: rs-rise 150ms cubic-bezier(0.2, 0.9, 0.3, 1);
+      }
+      @keyframes rs-rise { from { opacity: 0; transform: translateY(8px) scale(0.995) } to { opacity: 1; transform: none } }
+      .rs-app-head {
+        display: flex; align-items: center; gap: 10px;
+        height: 46px; padding: 0 14px;
+        border-bottom: 1px solid var(--dsh-border, rgba(127,127,127,0.18));
+        background:
+          linear-gradient(to bottom,
+            color-mix(in srgb, var(--dsh-accent, #4b8bf5) 7%, transparent),
+            transparent);
+      }
+      .rs-app-brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 13.5px; letter-spacing: 0.01em; }
+      .rs-app-brand .rs-logo {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 24px; height: 24px; border-radius: 7px;
+        background: linear-gradient(145deg,
+          color-mix(in srgb, var(--dsh-accent, #4b8bf5) 26%, transparent),
+          color-mix(in srgb, var(--dsh-accent, #4b8bf5) 12%, transparent));
+        color: var(--dsh-accent, #4b8bf5);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsh-accent, #4b8bf5) 22%, transparent);
+      }
+      .rs-app-spacer { flex: 1 1 auto; }
+      .rs-kbd {
+        font-family: var(--dsh-mono, ui-monospace, monospace); font-size: 11px;
+        padding: 2px 7px; border-radius: 6px;
+        border: 1px solid var(--dsh-border, rgba(127,127,127,0.3));
+        background: color-mix(in srgb, currentColor 4%, transparent);
+        opacity: 0.75;
+      }
+      .rs-icon-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px; border: 0; border-radius: 7px;
+        background: transparent; color: inherit; cursor: pointer; font-size: 15px; line-height: 1;
+        transition: background 100ms ease;
+      }
+      .rs-icon-btn:hover { background: var(--dsh-hover, rgba(127,127,127,0.14)); }
+      .rs-icon-btn:active { background: color-mix(in srgb, currentColor 16%, transparent); }
+      .rs-app-body { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
+
+      /* Left rail: grouped sections instead of one long pile of inputs. */
+      .rs-side {
+        width: 300px; min-width: 220px; max-width: 42%;
+        border-right: 1px solid var(--dsh-border, rgba(127,127,127,0.16));
+        display: flex; flex-direction: column; min-height: 0;
+        background: color-mix(in srgb, currentColor 2.5%, transparent);
+      }
+      .rs-side-sec { padding: 12px 14px 8px; display: flex; flex-direction: column; gap: 8px; }
+      .rs-side-sec + .rs-side-sec { border-top: 1px solid var(--dsh-border, rgba(127,127,127,0.13)); }
+      .rs-sec-head { display: flex; align-items: center; gap: 6px; }
+      .rs-sec-label {
+        flex: 1 1 auto; font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em;
+        text-transform: uppercase; opacity: 0.55;
+      }
+      .rs-field {
+        display: flex; align-items: center; gap: 6px;
+        border: 1px solid var(--dsh-border, rgba(127,127,127,0.26));
+        border-radius: 9px; padding: 0 9px; height: 32px;
+        background: color-mix(in srgb, currentColor 3.5%, transparent);
+        transition: border-color 110ms ease, box-shadow 110ms ease;
+      }
+      .rs-field:hover { border-color: color-mix(in srgb, currentColor 30%, transparent); }
+      .rs-field:focus-within {
+        border-color: var(--dsh-accent, #4b8bf5);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsh-accent, #4b8bf5) 16%, transparent);
+      }
+      .rs-field input, .rs-field select {
+        flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent;
+        color: inherit; font: inherit; font-size: 12px; height: 100%;
+      }
+      .rs-field select { cursor: pointer; }
+      .rs-field .rs-field-icon { opacity: 0.55; display: flex; }
+      .rs-chip-x { opacity: 0.5; cursor: pointer; }
+      .rs-chip-x:hover { opacity: 1; }
+      .rs-sec-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+      .rs-tree-head {
+        display: flex; align-items: center; gap: 4px; padding: 8px 8px 4px 12px;
+      }
+      .rs-tree-head .rs-sec-label { padding-left: 0; }
+
+      /* File tree: real icon glyphs, hover/selected states, indent guides. */
+      .rs-tree { flex: 1 1 auto; overflow: auto; padding: 2px 6px 14px; min-height: 0; }
+      .rs-node {
+        display: flex; align-items: center; gap: 6px;
+        padding: 3px 8px; margin: 1px 0; cursor: pointer; white-space: nowrap;
+        user-select: none; border-radius: 6px; font-size: 12.5px;
+      }
+      .rs-node:hover { background: var(--dsh-hover, rgba(127,127,127,0.12)); }
+      .rs-node.is-active { background: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 16%, transparent); }
+      .rs-node .rs-node-ico { display: inline-flex; width: 15px; justify-content: center; opacity: 0.85; }
+      .rs-node .rs-node-nm { overflow: hidden; text-overflow: ellipsis; }
+      .rs-node .rs-node-caret { width: 12px; opacity: 0.6; text-align: center; }
+      .rs-node-menu {
+        margin-left: auto; opacity: 0; border: 0; background: transparent; color: inherit;
+        cursor: pointer; font-size: 13px; padding: 0 2px; border-radius: 4px;
+      }
+      .rs-node:hover .rs-node-menu { opacity: 0.55; }
+      .rs-node-menu:hover { opacity: 1 !important; background: var(--dsh-hover, rgba(127,127,127,0.16)); }
+
+      /* Right-click / actions menu */
+      .rs-menu-anchor { position: fixed; z-index: 1100; min-width: 168px;
+        border: 1px solid var(--dsh-border, rgba(127,127,127,0.3)); border-radius: 10px;
+        background: var(--dsh-surface, #fff); color: inherit;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.28); padding: 4px; }
+      .rs-menu-item { display: flex; align-items: center; gap: 8px; width: 100%;
+        padding: 6px 10px; border: 0; background: transparent; color: inherit;
+        font: inherit; font-size: 12.5px; text-align: left; border-radius: 6px; cursor: pointer; }
+      .rs-menu-item:hover { background: var(--dsh-hover, rgba(127,127,127,0.14)); }
+      .rs-menu-item.is-danger { color: var(--dsh-danger, #e5534b); }
+      .rs-menu-sep { height: 1px; margin: 4px 6px; background: var(--dsh-border, rgba(127,127,127,0.2)); }
+
+      /* Tabs: a little more air, a files icon and a close target that appears
+         on hover/active instead of always-on. */
+      .rs-tabs {
+        display: flex; align-items: stretch; gap: 3px;
+        border-bottom: 1px solid var(--dsh-border, rgba(127,127,127,0.18));
+        background: color-mix(in srgb, currentColor 2%, transparent);
+        padding: 6px 8px 0; overflow-x: auto;
+      }
+      .rs-tab {
+        display: flex; align-items: center; gap: 6px; padding: 7px 12px;
+        font-size: 12px; cursor: pointer; white-space: nowrap;
+        border: 1px solid transparent; border-bottom: 0;
+        border-radius: 9px 9px 0 0; color: inherit;
+        transition: background 100ms ease;
+      }
+      .rs-tab:hover { background: var(--dsh-hover, rgba(127,127,127,0.1)); }
+      .rs-tab.active {
+        background: var(--dsh-surface, #fff);
+        border-color: var(--dsh-border, rgba(127,127,127,0.2));
+        box-shadow: inset 0 2px 0 var(--dsh-accent, #4b8bf5);
+      }
+      .rs-tab .rs-tab-x {
+        opacity: 0; font-size: 14px; line-height: 1; border-radius: 4px; padding: 0 3px;
+      }
+      .rs-tab:hover .rs-tab-x, .rs-tab.active .rs-tab-x { opacity: 0.6; }
+      .rs-tab .rs-tab-x:hover { opacity: 1; background: var(--dsh-hover, rgba(127,127,127,0.18)); }
+
+      /* Editor v2: gutter + highlighted overlay behind a transparent textarea.
+         All four layers share the exact same font metrics and padding so the
+         caret in the textarea lines up with the painted glyphs behind it. */
+      .rs-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--dsh-surface, #fff); }
+      .rs-editor-bar {
+        display: flex; align-items: center; gap: 8px; padding: 5px 12px; font-size: 12px;
+        border-bottom: 1px solid var(--dsh-border, rgba(127,127,127,0.16));
+      }
+      .rs-editor-bar .rs-ed-path { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; font-family: var(--dsh-mono, monospace); opacity: 0.9; }
+      .rs-editor-status { display: flex; align-items: center; gap: 10px; padding: 3px 12px; font-size: 11px;
+        border-top: 1px solid var(--dsh-border, rgba(127,127,127,0.16)); opacity: 0.72;
+        font-family: var(--dsh-mono, monospace); }
+      .rs-code-wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
+      .rs-gutter {
+        flex: 0 0 auto; overflow: hidden; padding: 10px 8px 10px 12px; text-align: right;
+        font-family: var(--dsh-mono, monospace); font-size: 12.5px; line-height: 1.55;
+        color: color-mix(in srgb, currentColor 42%, transparent);
+        background: color-mix(in srgb, currentColor 2.5%, transparent);
+        border-right: 1px solid var(--dsh-border, rgba(127,127,127,0.14));
+        user-select: none; white-space: pre;
+      }
+      .rs-code-scroll { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+      .rs-code-hl, .rs-code-ta {
+        position: absolute; inset: 0; margin: 0; border: 0; box-sizing: border-box;
+        font-family: var(--dsh-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+        font-size: 12.5px; line-height: 1.55; tab-size: 2; white-space: pre;
+        padding: 10px 14px; overflow: auto;
+      }
+      .rs-code-hl { pointer-events: none; color: inherit; z-index: 1; overflow: hidden; }
+      /* Two classes deep on purpose: the older .rs-editor textarea rule sets
+         color: inherit, and at one class this layer would be overridden — the
+         real characters would then paint on top of the coloured ones. */
+      .rs-editor .rs-code-ta {
+        z-index: 2; background: transparent; color: transparent; caret-color: var(--dsh-fg, currentColor);
+        resize: none; outline: none;
+      }
+      .rs-code-ta::selection { background: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 32%, transparent); }
+      /* Token colours. Two palettes: the dark page needs the Dark+ hues, the
+         light page needs darker ones or half the code turns into a highlighter. */
+      .rs-theme-light {
+        --rs-tok-com: #3f7f3f; --rs-tok-str: #a31515; --rs-tok-num: #098658;
+        --rs-tok-kw: #0000c0; --rs-tok-fn: #795e26;
+      }
+      .rs-theme-dark {
+        --rs-tok-com: #6a9955; --rs-tok-str: #ce9178; --rs-tok-num: #b5cea8;
+        --rs-tok-kw: #569cd6; --rs-tok-fn: #dcdcaa;
+      }
+      .tok-com { color: var(--rs-tok-com, #3f7f3f); font-style: italic; }
+      .tok-str { color: var(--rs-tok-str, #a31515); }
+      .tok-num { color: var(--rs-tok-num, #098658); }
+      .tok-kw  { color: var(--rs-tok-kw, #0000c0); }
+      .tok-fn  { color: var(--rs-tok-fn, #795e26); }
+      .tok-punc{ color: color-mix(in srgb, currentColor 62%, transparent); }
+
+      /* Rail entry (sidebar.panellist). The rail hands each plugin an
+         icon-sized slot (dsh-im and dsh-stm32-toolkit both draw a 16px svg),
+         so the capsule has two shapes: compact = accent-tinted icon square
+         that matches the other rail icons, wide = the original accent-dot
+         capsule with the 远程 label. */
+      .rs-rail-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+        height: 26px; padding: 0 8px; border-radius: 999px; cursor: pointer;
+        border: 1px solid var(--dsh-border, rgba(127,127,127,0.34));
+        background: transparent; color: inherit; max-width: 100%; overflow: hidden;
+        transition: background 110ms ease, border-color 110ms ease;
+      }
+      .rs-rail-btn.is-compact {
+        padding: 0; border-radius: 7px; flex: 0 0 auto;
+        color: var(--dsh-accent, #4b8bf5);
+        border-color: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 32%, transparent);
+        background: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 10%, transparent);
+      }
+      .rs-rail-btn:hover {
+        background: var(--dsh-hover, rgba(127,127,127,0.13));
+        border-color: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 55%, transparent);
+      }
+      .rs-rail-btn .rs-rail-dot {
+        flex: 0 0 auto;
+        width: 9px; height: 9px; border-radius: 50%;
+        background: var(--dsh-accent, #4b8bf5);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsh-accent, #4b8bf5) 18%, transparent);
+      }
+      .rs-rail-txt { font-size: 11px; font-weight: 600; white-space: nowrap; }
     `
 
     /**
@@ -609,41 +1173,213 @@ window.__ModuleLoader__.load({
     // Sidebar panel: target switcher, workspaces, file tree
     // ---------------------------------------------------------------------
 
-    function TreeNode({ entry, depth }) {
+    // ---------------------------------------------------------------------
+    // Icons: a handful of tiny inline SVGs so the tree, tabs and toolbar read
+    // as one icon family instead of a row of text glyphs.
+    // ---------------------------------------------------------------------
+
+    function Glyph({ name, size }) {
+      const s = size === undefined ? 14 : size
+      const common = { width: s, height: s, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor',
+        strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
+      const d = {
+        folder: 'M1.5 3.2h4l1.3 1.6h7.7v8H1.5z',
+        file: 'M3.5 1.8h5.2l3.3 3.3v9.1h-8.5zM8.7 1.9v3.3h3.3',
+        chevron: 'M6 3.5 10.5 8 6 12.5',
+        refresh: 'M13.2 8a5.2 5.2 0 1 1-1.6-3.7M13.4 2.2v3.2h-3.2',
+        plus: 'M8 2.6v10.8M2.6 8h10.8',
+        close: 'M4 4l8 8M12 4l-8 8',
+        more: 'M3.2 8h.01M8 8h.01M12.8 8h.01',
+        search: 'M10.8 10.8 14 14M11.6 6.9a4.7 4.7 0 1 1-9.4 0 4.7 4.7 0 0 1 9.4 0z',
+        trash: 'M3.2 4.4h9.6M6.4 4.4V3h3.2v1.4M4.4 4.4l.7 9.1h5.8l.7-9.1',
+        edit: 'M10.9 2.6 13.4 5.1 5.6 12.9l-3.2.7.7-3.2z',
+        terminal: 'M3 4.2 6 8l-3 3.8M8.2 12h4.4',
+        plug: 'M5.6 2v3.2M10.4 2v3.2M3.8 5.2h8.4v2.4a4.2 4.2 0 0 1-8.4 0zM8 11.8V14',
+        server: 'M2.4 3h11.2v4H2.4zM2.4 9h11.2v4H2.4zM4.4 5h.01M4.4 11h.01',
+      }[name]
+      return h('svg', common, h('path', { d, strokeWidth: name === 'more' ? 2.4 : undefined }))
+    }
+
+    // ---------------------------------------------------------------------
+    // File tree node: a caret, an icon, the name, and a "⋯" that opens the
+    // same actions menu as a right click.
+    // ---------------------------------------------------------------------
+
+    function TreeNode({ entry, depth, onMenu }) {
       const store = useStore()
       const expanded = store.expanded[entry.path] === true
       const node = store.dirs[entry.path]
+      const isDir = entry.type === 'dir'
+      const active = store.selection !== null && store.selection === entry.path
 
       const onActivate = () => {
-        if (entry.type === 'dir') toggleDir(entry.path)
+        setState({ selection: entry.path })
+        if (isDir) toggleDir(entry.path)
         else openFile(entry.path)
       }
 
-      const icon = entry.type === 'dir' ? (expanded ? '▾' : '▸') : entry.type === 'file' ? '·' : '?'
+      const openMenu = (event) => {
+        if (typeof onMenu !== 'function') return
+        event.preventDefault()
+        event.stopPropagation()
+        setState({ selection: entry.path })
+        onMenu({ x: event.clientX, y: event.clientY, path: entry.path, type: entry.type, name: entry.name })
+      }
+
       const children = []
       children.push(
         h(
           'div',
-          { key: 'row', className: 'rs-node', style: { paddingLeft: `${8 + depth * 12}px` }, onClick: onActivate, title: entry.name },
-          h('span', { style: { width: '12px', textAlign: 'center', opacity: 0.7 } }, icon),
-          h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, entry.name),
+          {
+            key: 'row',
+            className: active ? 'rs-node is-active' : 'rs-node',
+            style: { paddingLeft: `${6 + depth * 12}px` },
+            onClick: onActivate,
+            onContextMenu: openMenu,
+            title: entry.path,
+          },
+          h(
+            'span',
+            { className: 'rs-node-caret' },
+            isDir ? h('span', { style: { display: 'inline-flex', transform: expanded ? 'rotate(90deg)' : 'none' } }, h(Glyph, { name: 'chevron', size: 11 })) : null,
+          ),
+          h('span', { className: 'rs-node-ico' }, h(Glyph, { name: isDir ? 'folder' : 'file', size: 13 })),
+          h('span', { className: 'rs-node-nm' }, entry.name),
+          h('button', { className: 'rs-node-menu', title: '更多操作', onClick: openMenu }, h(Glyph, { name: 'more', size: 13 })),
         ),
       )
-      if (entry.type === 'dir' && expanded) {
+      if (isDir && expanded) {
         if (node === undefined || node.loading === true) {
-          children.push(h('div', { key: 'loading', className: 'rs-dim', style: { paddingLeft: `${20 + depth * 12}px` } }, '加载中…'))
+          children.push(h('div', { key: 'loading', className: 'rs-dim', style: { paddingLeft: `${28 + depth * 12}px` } }, '加载中…'))
         } else if (node.error) {
-          children.push(h('div', { key: 'error', className: 'rs-err' }, node.error))
+          children.push(h('div', { key: 'error', className: 'rs-err', style: { paddingLeft: `${28 + depth * 12}px` } }, node.error))
         } else {
           for (const child of node.entries) {
-            children.push(h(TreeNode, { key: child.path, entry: child, depth: depth + 1 }))
+            children.push(h(TreeNode, { key: child.path, entry: child, depth: depth + 1, onMenu }))
           }
           if (node.entries.length === 0) {
-            children.push(h('div', { key: 'empty', className: 'rs-dim', style: { paddingLeft: `${20 + depth * 12}px` } }, '（空）'))
+            children.push(h('div', { key: 'empty', className: 'rs-dim', style: { paddingLeft: `${28 + depth * 12}px` } }, '（空目录）'))
           }
         }
       }
       return h(React.Fragment, null, children)
+    }
+
+    // A tiny promise-shaped text prompt used for "new file / new folder /
+    // rename". It replaces the browser prompt(), which the desktop shell blocks.
+    function PromptDialog({ title, label, initial, confirmLabel, onCancel, onSubmit }) {
+      const [text, setText] = React.useState(initial === undefined ? '' : initial)
+      const [busy, setBusy] = React.useState(false)
+      const [error, setError] = React.useState(null)
+      const inputRef = React.useRef(null)
+
+      React.useEffect(() => {
+        const node = inputRef.current
+        if (node !== null && node !== undefined) {
+          node.focus()
+          node.select()
+        }
+      }, [])
+
+      const submit = async () => {
+        const value = text.trim()
+        if (value === '') {
+          setError('名字不能为空')
+          return
+        }
+        setBusy(true)
+        setError(null)
+        try {
+          await onSubmit(value)
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : String(cause))
+          setBusy(false)
+        }
+      }
+
+      return h(
+        'div',
+        { className: 'rs-overlay-backdrop', style: { zIndex: 1200, alignItems: 'center', justifyContent: 'center' } },
+        h(
+          'div',
+          {
+            className: 'rs-menu-anchor',
+            style: { position: 'static', minWidth: '320px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' },
+            onClick: (event) => event.stopPropagation(),
+          },
+          h('div', { style: { fontSize: '13px', fontWeight: 600 } }, title),
+          h('div', { className: 'rs-field' }, h('input', {
+            ref: inputRef,
+            value: text,
+            spellCheck: false,
+            placeholder: label,
+            onChange: (event) => setText(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter') submit()
+              if (event.key === 'Escape') onCancel()
+            },
+          })),
+          error !== null ? h('div', { className: 'rs-err' }, error) : null,
+          h(
+            'div',
+            { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px' } },
+            h('button', { className: 'rs-btn', onClick: onCancel, disabled: busy }, '取消'),
+            h('button', { className: 'rs-btn rs-primary', onClick: submit, disabled: busy }, confirmLabel || '确定'),
+          ),
+        ),
+      )
+    }
+
+    function MenuList({ x, y, items, onClose }) {
+      React.useEffect(() => {
+        const close = () => onClose()
+        const onKey = (event) => {
+          if (event.key === 'Escape') onClose()
+        }
+        const timer = setTimeout(() => {
+          globalThis.addEventListener('click', close, true)
+          globalThis.addEventListener('keydown', onKey, true)
+        }, 0)
+        return () => {
+          clearTimeout(timer)
+          globalThis.removeEventListener('click', close, true)
+          globalThis.removeEventListener('keydown', onKey, true)
+        }
+      }, [])
+
+      const rows = []
+      items.forEach((item, index) => {
+        if (item === null) {
+          rows.push(h('div', { key: `sep-${index}`, className: 'rs-menu-sep' }))
+          return
+        }
+        rows.push(
+          h(
+            'button',
+            {
+              key: `${item.label}-${index}`,
+              className: item.danger === true ? 'rs-menu-item is-danger' : 'rs-menu-item',
+              onClick: (event) => {
+                event.stopPropagation()
+                onClose()
+                item.onSelect()
+              },
+            },
+            item.icon === undefined ? null : h(Glyph, { name: item.icon, size: 13 }),
+            item.label,
+          ),
+        )
+      })
+
+      return h(
+        'div',
+        {
+          className: 'rs-menu-anchor',
+          style: { left: `${x}px`, top: `${y}px` },
+          onClick: (event) => event.stopPropagation(),
+        },
+        rows,
+      )
     }
 
     function Panel() {
@@ -651,6 +1387,8 @@ window.__ModuleLoader__.load({
       const store = useStore()
       const [rootText, setRootText] = React.useState('')
       const [portText, setPortText] = React.useState('')
+      const [menu, setMenu] = React.useState(null)
+      const [prompt, setPrompt] = React.useState(null)
       const booted = React.useRef(false)
 
       React.useEffect(() => {
@@ -669,10 +1407,13 @@ window.__ModuleLoader__.load({
         if (rootNode === undefined || rootNode.loading === true) {
           tree.push(h('div', { key: 'loading', className: 'rs-dim', style: { padding: '4px 10px' } }, '加载中…'))
         } else if (rootNode.error) {
-          tree.push(h('div', { key: 'error', className: 'rs-err' }, rootNode.error))
+          tree.push(h('div', { key: 'error', className: 'rs-err', style: { paddingLeft: '12px' } }, rootNode.error))
         } else {
           for (const entry of rootNode.entries) {
-            tree.push(h(TreeNode, { key: entry.path, entry, depth: 0 }))
+            tree.push(h(TreeNode, { key: entry.path, entry, depth: 0, onMenu: setMenu }))
+          }
+          if (rootNode.entries.length === 0) {
+            tree.push(h('div', { key: 'empty', className: 'rs-dim', style: { padding: '4px 12px' } }, '这个目录是空的'))
           }
         }
       }
@@ -684,102 +1425,194 @@ window.__ModuleLoader__.load({
       const goTo = async () => {
         const next = rootText.trim()
         if (next === '') return
-        setState({ root: next, expanded: {} })
+        setState({ root: next, expanded: {}, selection: null })
         await loadDir(next)
       }
 
-      return h(
-        'div',
-        { className: 'rs-root' },
+      // Port forwarding only exists for SSH / daemon targets; the other kinds
+      // report it at the API level, so the control is hidden rather than left
+      // to fail on click.
+      const canForward = store.target !== null && (store.target.startsWith('ssh:') || store.target.startsWith('daemon:'))
+
+      const askNewFile = (dirPath) => {
+        setPrompt({
+          title: '新建文件',
+          label: '文件名，如 index.js',
+          initial: '',
+          confirmLabel: '创建',
+          onSubmit: async (name) => {
+            await newFile(dirPath, name)
+            setPrompt(null)
+          },
+        })
+      }
+      const askNewFolder = (dirPath) => {
+        setPrompt({
+          title: '新建文件夹',
+          label: '文件夹名',
+          initial: '',
+          confirmLabel: '创建',
+          onSubmit: async (name) => {
+            await newFolder(dirPath, name)
+            setPrompt(null)
+          },
+        })
+      }
+      const askRename = (path, current) => {
+        setPrompt({
+          title: '重命名',
+          label: '新名字',
+          initial: current,
+          confirmLabel: '重命名',
+          onSubmit: async (name) => {
+            await renameEntry(path, name)
+            setPrompt(null)
+          },
+        })
+      }
+      const askDelete = (path) => {
+        setPrompt({
+          title: '确认删除',
+          label: `输入 DELETE 以删除 ${path}`,
+          initial: '',
+          confirmLabel: '删除',
+          onSubmit: async (value) => {
+            if (value !== 'DELETE') throw new Error('请输入 DELETE 以确认删除')
+            await deleteEntry(path)
+            setPrompt(null)
+          },
+        })
+      }
+
+      const menuItems = menu === null ? [] : (() => {
+        const targetDir = menu.type === 'dir' ? menu.path : parentOfPath(menu.path)
+        const items = [
+          { label: '新建文件', icon: 'file', onSelect: () => askNewFile(targetDir) },
+          { label: '新建文件夹', icon: 'folder', onSelect: () => askNewFolder(targetDir) },
+          null,
+          { label: '刷新', icon: 'refresh', onSelect: () => loadDir(targetDir) },
+        ]
+        if (menu.path !== store.root) {
+          items.push(null, { label: '重命名', icon: 'edit', onSelect: () => askRename(menu.path, menu.name) })
+          items.push({ label: '删除', icon: 'trash', danger: true, onSelect: () => askDelete(menu.path) })
+        }
+        return items
+      })()
+
+      const sections = []
+
+      // Target + workspaces
+      sections.push(
         h(
           'div',
-          { className: 'rs-title' },
-          h('span', null, '远程'),
-          h(
-            'button',
-            { className: 'rs-btn', onClick: () => initialize() },
-            '刷新',
+          { key: 'target', className: 'rs-side-sec' },
+          h('div', { className: 'rs-sec-head' },
+            h('span', { className: 'rs-sec-label' }, '目标'),
+            h('button', { className: 'rs-icon-btn', title: '刷新目标与目录', onClick: () => initialize() }, h(Glyph, { name: 'refresh', size: 13 })),
           ),
-        ),
-        h(
-          'div',
-          { className: 'rs-row' },
-          h(
-            'select',
-            {
-              className: 'rs-select',
-              style: { flex: 1 },
-              value: store.target === null ? '' : store.target,
-              onChange: (event) => changeTarget(event.target.value),
-            },
-            store.targets.map((target) => h('option', { key: target.id, value: target.id }, target.label || target.id)),
+          h('div', { className: 'rs-field' },
+            h('span', { className: 'rs-field-icon' }, h(Glyph, { name: 'server', size: 13 })),
+            h(
+              'select',
+              { value: store.target === null ? '' : store.target, onChange: (event) => changeTarget(event.target.value) },
+              store.targets.map((target) => h('option', { key: target.id, value: target.id }, target.label || target.id)),
+            ),
           ),
-        ),
-        store.workspaces.length > 0
-          ? h(
-              'div',
-              { className: 'rs-chips' },
-              store.workspaces.map((workspace) =>
-                h(
-                  'span',
-                  { key: workspace.id, className: 'rs-chip', onClick: () => openWorkspace(workspace), title: `${workspace.targetId}:${workspace.path}` },
-                  workspace.name,
-                  h(
-                    'span',
-                    {
-                      className: 'rs-x',
-                      onClick: (event) => {
-                        event.stopPropagation()
-                        removeWorkspace(workspace.id)
-                      },
-                    },
-                    '×',
+          store.workspaces.length > 0
+            ? h('div', { className: 'rs-chips', style: { marginTop: '2px' } },
+                store.workspaces.map((workspace) =>
+                  h('span', { key: workspace.id, className: 'rs-chip', onClick: () => openWorkspace(workspace), title: `${workspace.targetId}:${workspace.path}` },
+                    workspace.name,
+                    h('span', { className: 'rs-chip-x', onClick: (event) => { event.stopPropagation(); removeWorkspace(workspace.id) } }, '×'),
                   ),
                 ),
-              ),
-            )
-          : null,
-        h(
-          'div',
-          { className: 'rs-row', style: { paddingBottom: '6px' } },
-          h('input', {
-            className: 'rs-input',
-            value: rootText,
-            spellCheck: false,
-            onChange: (event) => setRootText(event.target.value),
-            onKeyDown: (event) => {
-              if (event.key === 'Enter') goTo()
-            },
-          }),
-          h('button', { className: 'rs-btn', onClick: goTo }, '前往'),
+              )
+            : null,
         ),
-        h('div', { className: 'rs-tree' }, tree),
-        store.error !== null ? h('div', { className: 'rs-err', style: { paddingBottom: '6px' } }, store.error) : null,
+      )
+
+      // Path
+      sections.push(
         h(
           'div',
-          { className: 'rs-row', style: { paddingBottom: '6px' } },
-          h('input', {
-            className: 'rs-input',
-            value: portText,
-            spellCheck: false,
-            placeholder: '远端端口，如 3000',
-            onChange: (event) => setPortText(event.target.value),
-            onKeyDown: (event) => {
-              if (event.key === 'Enter') openForward(Number.parseInt(portText.trim(), 10))
-            },
-          }),
-          h(
-            'button',
-            { className: 'rs-btn', onClick: () => openForward(Number.parseInt(portText.trim(), 10)), disabled: store.target === null },
-            '转发',
+          { key: 'path', className: 'rs-side-sec' },
+          h('div', { className: 'rs-sec-head' }, h('span', { className: 'rs-sec-label' }, '路径')),
+          h('div', { className: 'rs-field' },
+            h('span', { className: 'rs-field-icon' }, h(Glyph, { name: 'folder', size: 13 })),
+            h('input', {
+              value: rootText,
+              spellCheck: false,
+              placeholder: '远端目录，如 /root/i',
+              onChange: (event) => setRootText(event.target.value),
+              onKeyDown: (event) => { if (event.key === 'Enter') goTo() },
+            }),
           ),
         ),
+      )
+
+      // File tree (grows)
+      sections.push(
         h(
           'div',
-          { className: 'rs-row', style: { paddingBottom: '10px' } },
-          h('button', { className: 'rs-btn rs-primary', onClick: openDialog }, '＋ 添加工作区'),
-          h('button', { className: 'rs-btn', onClick: addWorkspace, disabled: store.root === null }, '存为工作区'),
+          { key: 'tree', className: 'rs-sec-scroll' },
+          h('div', { className: 'rs-tree-head' },
+            h('span', { className: 'rs-sec-label' }, '文件'),
+            h('button', { className: 'rs-icon-btn', title: '新建文件', disabled: store.root === null, onClick: () => askNewFile(store.root) }, h(Glyph, { name: 'file', size: 13 })),
+            h('button', { className: 'rs-icon-btn', title: '新建文件夹', disabled: store.root === null, onClick: () => askNewFolder(store.root) }, h(Glyph, { name: 'folder', size: 13 })),
+            h('button', { className: 'rs-icon-btn', title: '刷新', disabled: store.root === null, onClick: () => loadDir(store.root) }, h(Glyph, { name: 'refresh', size: 13 })),
+          ),
+          h('div', { className: 'rs-tree' }, tree),
+          store.error !== null ? h('div', { className: 'rs-err', style: { padding: '4px 12px' } }, store.error) : null,
         ),
+      )
+
+      // Port forwarding (SSH / daemon only)
+      if (canForward) {
+        sections.push(
+          h(
+            'div',
+            { key: 'forward', className: 'rs-side-sec' },
+            h('div', { className: 'rs-sec-head' }, h('span', { className: 'rs-sec-label' }, '端口转发')),
+            h('div', { className: 'rs-field' },
+              h('span', { className: 'rs-field-icon' }, h(Glyph, { name: 'plug', size: 13 })),
+              h('input', {
+                value: portText,
+                spellCheck: false,
+                placeholder: '远端端口，如 3000',
+                onChange: (event) => setPortText(event.target.value),
+                onKeyDown: (event) => { if (event.key === 'Enter') openForward(Number.parseInt(portText.trim(), 10)) },
+              }),
+              h('button', { className: 'rs-btn', onClick: () => openForward(Number.parseInt(portText.trim(), 10)) }, '转发'),
+            ),
+          ),
+        )
+      }
+
+      // Footer: save the current target+directory as a workspace chip, or
+      // re-scan targets. Host-native "add workspace" is still available from
+      // the shipped sidebar button (this plugin overrides its flow).
+      sections.push(
+        h(
+          'div',
+          { key: 'footer', className: 'rs-side-sec', style: { flexDirection: 'row', gap: '6px', paddingBottom: '10px' } },
+          h('button', { className: 'rs-btn rs-primary', style: { flex: 1 }, onClick: addWorkspace, disabled: store.root === null }, '存为工作区'),
+          h('button', { className: 'rs-btn', onClick: () => initialize() }, '刷新'),
+        ),
+      )
+
+      return h(
+        'div',
+        { className: 'rs-root', style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } },
+        sections,
+        menu === null ? null : h(MenuList, { x: menu.x, y: menu.y, items: menuItems, onClose: () => setMenu(null) }),
+        prompt === null ? null : h(PromptDialog, {
+          title: prompt.title,
+          label: prompt.label,
+          initial: prompt.initial,
+          confirmLabel: prompt.confirmLabel,
+          onCancel: () => setPrompt(null),
+          onSubmit: prompt.onSubmit,
+        }),
       )
     }
 
@@ -791,6 +1624,10 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
 
     const workspaceServices = { workspaces: null, uiWorkspace: null }
+
+    // The host layout service is only needed by the rail launcher, which has to
+    // hand the main area back after it opens the floating workbench.
+    const layoutServices = { layout: null }
 
     async function startSessionFor(workspaceId) {
       const ui = workspaceServices.uiWorkspace
@@ -1402,6 +2239,16 @@ window.__ModuleLoader__.load({
         ),
       )
 
+      if (tab === 'docker') {
+        rows.push(
+          h(
+            'div',
+            { key: 'docker-hint', className: 'rs-flow-hint' },
+            '运行中的容器会直接打开容器里的真实文件（和 WSL 一样）；容器停止时才退回本地镜像目录。',
+          ),
+        )
+      }
+
       if (filePick !== null) {
         rows.push(
           h(
@@ -1557,30 +2404,153 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // ---------------------------------------------------------------------
+    // A very small syntax highlighter. It paints one flat run of spans behind
+    // a transparent textarea, so the caret and selection still behave exactly
+    // like a normal textarea while the text underneath carries colour. No
+    // library is required (the DSH profile ships no editor package).
+    // ---------------------------------------------------------------------
+
+    const KEYWORDS = new Set([
+      'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'return',
+      'function', 'const', 'let', 'var', 'class', 'extends', 'new', 'this', 'super', 'import',
+      'from', 'export', 'default', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'typeof',
+      'instanceof', 'in', 'of', 'delete', 'void', 'yield', 'static', 'get', 'set', 'null',
+      'undefined', 'true', 'false', 'def', 'elif', 'pass', 'lambda', 'None', 'True', 'False',
+      'and', 'or', 'not', 'is', 'with', 'as', 'raise', 'except', 'global', 'nonlocal', 'assert',
+      'package', 'struct', 'interface', 'enum', 'public', 'private', 'protected', 'final', 'func',
+      'fn', 'impl', 'pub', 'mut', 'use', 'mod', 'match', 'type', 'let', 'echo', 'then', 'fi',
+      'esac', 'done', 'elif', 'local', 'export', 'source', 'select',
+    ])
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    }
+
+    function highlight(text) {
+      const pattern = new RegExp(
+        [
+          '(/\\*[\\s\\S]*?\\*/|//[^\\n]*|#[^\\n]*)', // 1 comment
+          '("(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'|`(?:[^`\\\\]|\\\\.)*`)', // 2 string
+          '\\b(0[xX][0-9a-fA-F]+|\\d+(?:\\.\\d+)?)\\b', // 3 number
+          '\\b([A-Za-z_$][\\w$]*)\\b', // 4 word
+        ].join('|'),
+        'g',
+      )
+      let out = ''
+      let last = 0
+      let match
+      while ((match = pattern.exec(text)) !== null) {
+        if (match.index > last) out += escapeHtml(text.slice(last, match.index))
+        if (match[1] !== undefined) {
+          out += `<span class="tok-com">${escapeHtml(match[1])}</span>`
+        } else if (match[2] !== undefined) {
+          out += `<span class="tok-str">${escapeHtml(match[2])}</span>`
+        } else if (match[3] !== undefined) {
+          out += `<span class="tok-num">${escapeHtml(match[3])}</span>`
+        } else {
+          const word = match[4]
+          if (KEYWORDS.has(word)) {
+            out += `<span class="tok-kw">${escapeHtml(word)}</span>`
+          } else if (/^\s*\(/.test(text.slice(pattern.lastIndex))) {
+            out += `<span class="tok-fn">${escapeHtml(word)}</span>`
+          } else {
+            out += escapeHtml(word)
+          }
+        }
+        last = pattern.lastIndex
+      }
+      if (last < text.length) out += escapeHtml(text.slice(last))
+      return out
+    }
+
     function EditorTab({ tab, index, hidden }) {
+      const store = useStore()
       const dirty = tab.text !== tab.saved
+      const hlRef = React.useRef(null)
+      const gutterRef = React.useRef(null)
+      const taRef = React.useRef(null)
+      const lineCount = React.useMemo(() => tab.text.split('\n').length, [tab.text])
+      const html = React.useMemo(() => highlight(tab.text), [tab.text])
+
       const onChange = (event) => updateTab(index, { text: event.target.value })
+
+      const syncScroll = () => {
+        const ta = taRef.current
+        if (ta === null) return
+        if (hlRef.current !== null) {
+          hlRef.current.scrollTop = ta.scrollTop
+          hlRef.current.scrollLeft = ta.scrollLeft
+        }
+        if (gutterRef.current !== null) gutterRef.current.scrollTop = ta.scrollTop
+      }
+
+      // Keep the overlay and gutter aligned when the tab sizes change.
+      React.useEffect(() => {
+        syncScroll()
+      }, [])
+
+      const gutter = []
+      for (let n = 1; n <= lineCount; n += 1) gutter.push(n)
+
       return h(
         'div',
         { className: 'rs-editor', style: hidden ? { display: 'none' } : null },
         h(
           'div',
           { className: 'rs-editor-bar' },
-          h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }, title: tab.path }, tab.path),
+          h('span', { className: 'rs-ed-path', title: tab.path }, tab.path),
           dirty ? h('span', { className: 'rs-dim' }, '未保存') : null,
           h('button', { className: 'rs-btn', onClick: () => saveTab(index), disabled: !dirty }, '保存'),
         ),
-        h('textarea', {
-          value: tab.text,
-          spellCheck: false,
-          onChange,
-          onKeyDown: (event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-              event.preventDefault()
-              if (dirty) saveTab(index)
-            }
-          },
-        }),
+        h(
+          'div',
+          { className: 'rs-code-wrap' },
+          h('div', { className: 'rs-gutter', ref: gutterRef }, gutter.join('\n')),
+          h(
+            'div',
+            { className: 'rs-code-scroll' },
+            h('pre', { className: 'rs-code-hl', ref: hlRef, 'aria-hidden': true, dangerouslySetInnerHTML: { __html: html + '\n' } }),
+            h('textarea', {
+              className: 'rs-code-ta',
+              ref: taRef,
+              value: tab.text,
+              spellCheck: false,
+              wrap: 'off',
+              onChange,
+              onScroll: syncScroll,
+              onKeyDown: (event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+                  event.preventDefault()
+                  if (dirty) saveTab(index)
+                }
+                if (event.key === 'Tab') {
+                  event.preventDefault()
+                  const ta = event.target
+                  const start = ta.selectionStart
+                  const end = ta.selectionEnd
+                  const next = tab.text.slice(0, start) + '  ' + tab.text.slice(end)
+                  updateTab(index, { text: next })
+                  requestAnimationFrame(() => {
+                    if (taRef.current !== null) {
+                      taRef.current.selectionStart = start + 2
+                      taRef.current.selectionEnd = start + 2
+                    }
+                  })
+                }
+              },
+            }),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'rs-editor-status' },
+          h('span', null, `${lineCount} 行`),
+          h('span', null, `${tab.text.length} 字符`),
+          h('span', { className: 'rs-app-spacer' }),
+          h('span', null, dirty ? '● 未保存' : '已保存'),
+          h('span', { title: store.target === null ? '' : store.target }, store.target === null ? '' : store.target),
+        ),
       )
     }
 
@@ -1597,6 +2567,9 @@ window.__ModuleLoader__.load({
       const [status, setStatus] = React.useState('connecting')
       const [detail, setDetail] = React.useState('')
       const [fallback, setFallback] = React.useState(null)
+      // The terminal must follow the host theme, so keep the current answer in a
+      // ref: `connect()` runs outside render and needs it synchronously.
+      const darkRef = React.useRef(hostIsDark())
 
       const disconnect = () => {
         const current = live.current
@@ -1629,6 +2602,7 @@ window.__ModuleLoader__.load({
           fontSize: 12,
           fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace',
           scrollback: 4000,
+          theme: terminalPalette(darkRef.current),
         })
         const fit = new window.FitAddon.FitAddon()
         term.loadAddon(fit)
@@ -1691,26 +2665,56 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => {
         // The terminal mounts before the target list arrives; connecting with an
-        // empty target would only produce an error frame. Wait for one.
+        // empty target would only produce an error frame. Wait for one, and also
+        // wait for a real starting directory: a bare target has no scope base,
+        // and the Host needs an actual path to chdir into.
         if (store.target === null) return undefined
         let alive = true
-        loadTerminalAssets()
-          .then(() => {
-            if (alive) connect(store.target, store.root)
-          })
-          .catch((error) => {
-            if (alive) {
-              setFallback(error.message || String(error))
-              setStatus('error')
-            }
-          })
+        let timer = null
+        const start = () => {
+          if (!alive) return
+          const root = state.root
+          if (typeof root !== 'string' || root === '') {
+            timer = setTimeout(start, 120)
+            return
+          }
+          loadTerminalAssets()
+            .then(() => {
+              if (alive) connect(store.target, root)
+            })
+            .catch((error) => {
+              if (alive) {
+                setFallback(error.message || String(error))
+                setStatus('error')
+              }
+            })
+        }
+        start()
         return () => {
           alive = false
+          if (timer !== null) clearTimeout(timer)
           disconnect()
         }
-        // Mount + first target only: reconnecting is an explicit action, so a
-        // target switch never yanks a running shell out from under the user.
-      }, [store.target === null])
+        // Reconnect whenever the target changes. A shell that was spawned in the
+        // old target would otherwise keep writing into the machine the user has
+        // already left, so the tab re-attaches instead of showing a stale
+        // session under a new target's name.
+      }, [store.target])
+
+      // A live terminal keeps the palette it was created with, so repaint it when
+      // the reader switches the host theme while the shell is still running.
+      React.useEffect(() => {
+        return watchHostTheme((dark) => {
+          darkRef.current = dark
+          const liveNow = live.current
+          if (liveNow === null) return
+          try {
+            liveNow.term.options.theme = terminalPalette(dark)
+          } catch (error) {
+            void error
+          }
+        })
+      }, [])
 
       // A tab that was hidden mounts at zero width; refit the moment it is shown.
       React.useEffect(() => {
@@ -1807,6 +2811,7 @@ window.__ModuleLoader__.load({
       const tabs = store.tabs
       const termIndex = tabs.length
       const active = store.active >= 0 && store.active <= termIndex ? store.active : termIndex
+      const pending = store.pendingClose
 
       const tabBar = []
       tabs.forEach((tab, index) => {
@@ -1826,7 +2831,7 @@ window.__ModuleLoader__.load({
             h(
               'span',
               {
-                className: 'rs-x',
+                className: 'rs-tab-x',
                 onClick: (event) => {
                   event.stopPropagation()
                   closeTab(index)
@@ -1845,6 +2850,7 @@ window.__ModuleLoader__.load({
             className: active === termIndex || active === -1 ? 'rs-tab active' : 'rs-tab',
             onClick: () => setState({ active: termIndex }),
           },
+          h('span', { style: { display: 'inline-flex', marginRight: '4px' } }, h(Glyph, { name: 'terminal', size: 12 })),
           '终端',
         ),
       )
@@ -1856,11 +2862,36 @@ window.__ModuleLoader__.load({
       )
       bodies.push(h(TerminalTab, { key: 'terminal', hidden: active !== termIndex }))
 
-      return h('div', { className: 'rs-main' }, h('div', { className: 'rs-tabs' }, tabBar), h('div', { className: 'rs-body' }, bodies))
+      const confirmBar =
+        pending === null || tabs[pending] === undefined
+          ? null
+          : h(
+              'div',
+              {
+                style: {
+                  display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
+                  borderTop: '1px solid var(--dsh-border, rgba(127,127,127,0.24))',
+                  background: 'color-mix(in srgb, var(--dsh-danger, #e5534b) 10%, transparent)',
+                  fontSize: '12px',
+                },
+              },
+              h('span', { style: { flex: 1 } }, `“${tabs[pending].path.split(/[\\/]/).pop()}” 有未保存的修改，关闭前要保存吗？`),
+              h('button', { className: 'rs-btn rs-primary', onClick: () => saveThenClose(pending) }, '保存并关闭'),
+              h('button', { className: 'rs-btn', onClick: () => closeTab(pending, true) }, '不保存'),
+              h('button', { className: 'rs-btn', onClick: () => setState({ pendingClose: null }) }, '取消'),
+            )
+
+      return h(
+        'div',
+        { className: 'rs-main' },
+        h('div', { className: 'rs-tabs' }, tabBar),
+        h('div', { className: 'rs-body' }, bodies),
+        confirmBar,
+      )
     }
 
-    // The rail icon opens this one view: targets + tree on the left, editor and
-    // console on the right.
+    // The one view the entry points open: a header bar, targets + tree on the
+    // left, editor and terminal on the right.
     function Workspace() {
       useStyle()
       return h(
@@ -1872,25 +2903,180 @@ window.__ModuleLoader__.load({
     }
 
     // ---------------------------------------------------------------------
-    // Seats
+    // Entry points
+    //
+    // The workbench is a full-screen overlay mounted in `shell.overlay`. Its
+    // entry lives in the left rail (`sidebar.panellist`), styled as the same
+    // accent-dot capsule the composer pill used to be, or it opens with
+    // Ctrl/Cmd+`. The rail only hands a plugin a small icon-sized slot, so the
+    // capsule is scaled down to fit rather than being a letter box.
     // ---------------------------------------------------------------------
 
-    function Icon() {
-      const props = {
-        title: '远程',
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '24px',
-          height: '24px',
-          fontSize: '13px',
-          fontWeight: 600,
-          borderRadius: '6px',
-          border: '1px solid rgba(127,127,127,0.45)',
+    // Opens the workbench from anywhere: the rail entry and the keyboard
+    // shortcut both call this through the module-level helper below.
+    function openFromAnywhere() {
+      openWorkbench()
+      const api = globalThis.__DSH_REMOTE__
+      if (api !== undefined && typeof api.focus === 'function') api.focus()
+    }
+
+    // The rail entry. The rail gives each plugin an icon-sized slot (dsh-im
+    // passes `size` to a 16px svg), so the compact form is an accent-tinted
+    // terminal glyph — same family as the other rail icons — and the full
+    // accent-dot capsule only appears when the host proves it has real room.
+    function RailEntry(owner) {
+      useStyle()
+      const store = useStore()
+      const size = owner && typeof owner.size === 'number' && owner.size > 0 ? owner.size : 16
+      const compact = size < 40
+      const target = store.target === null ? '' : store.target.replace(/^[a-z]+:/, '')
+      const title = '远程工作台' + (target === '' ? '' : ' · ' + target) + '（Ctrl/⌘+`）'
+      const box = compact ? { width: size + 'px', height: size + 'px' } : null
+      return h(
+        'button',
+        { className: compact ? 'rs-rail-btn is-compact' : 'rs-rail-btn', style: box, title, onClick: openFromAnywhere },
+        compact ? h(Glyph, { name: 'terminal', size: Math.max(12, size - 4) }) : h('span', { className: 'rs-rail-dot' }),
+        compact ? null : h('span', { className: 'rs-rail-txt' }, '远程'),
+      )
+    }
+
+    // The rail icon is not a free-floating button as far as the host is
+    // concerned: clicking it means "activate the main panel with this id".
+    // Both reference implementations (dsh-im, dshmarket) therefore register a
+    // `main` seat whose key equals the rail id. Without it the click is a
+    // no-op — the host switches to a panel that does not exist. So the `main`
+    // seat exists solely as a launcher: it opens the overlay and immediately
+    // gives the main area back, keeping the workbench a floating window.
+    function MainLaunch(props) {
+      React.useEffect(() => {
+        // Toggle, not just open: the rail icon behaves like a light switch, so
+        // clicking it again while the workbench is up puts it away.
+        if (state.open === true) closeWorkbench()
+        else openWorkbench()
+        const layout = (props && props.layout) || null
+        if (layout !== null && typeof layout.selectPanel === 'function') {
+          // Let the overlay paint first, then return the main area to whatever
+          // the user was looking at instead of leaving an empty panel behind.
+          const timer = setTimeout(() => {
+            try {
+              layout.selectPanel(null)
+            } catch (error) {
+              void error
+            }
+          }, 90)
+          return () => clearTimeout(timer)
+        }
+        return undefined
+      }, [])
+      return null
+    }
+
+    // The overlay itself. It owns the keyboard shortcut and keeps the rest of
+    // the app usable underneath: clicking the backdrop closes it, Escape too.
+    function WorkbenchOverlay() {
+      useStyle()
+      const store = useStore()
+      const open = store.open === true
+      const [addOpen, setAddOpen] = React.useState(false)
+      // The host lets the reader switch theme at any time, so the overlay can't
+      // sample the theme once at render: track it, or a light workbench would
+      // stay light (white terminal and all) after the reader picks dark.
+      const [dark, setDark] = React.useState(() => hostIsDark())
+
+      React.useEffect(() => {
+        return watchHostTheme(setDark)
+      }, [])
+
+      React.useEffect(() => {
+        const onKey = (event) => {
+          if (
+            (event.ctrlKey || event.metaKey) &&
+            !event.altKey &&
+            (event.key === '`' || event.key === '~' || event.code === 'Backquote')
+          ) {
+            event.preventDefault()
+            event.stopPropagation()
+            toggleWorkbench()
+          }
+          if (event.key === 'Escape' && state.open === true) {
+            event.preventDefault()
+            event.stopPropagation()
+            closeWorkbench()
+          }
+        }
+        globalThis.addEventListener('keydown', onKey, true)
+        // A small test hook, mirroring dsh-terminal's __DSH_TERMINAL__.
+        globalThis.__DSH_REMOTE__ = {
+          open: () => setState({ open: true }),
+          close: () => setState({ open: false }),
+          toggle: () => setState((current) => ({ open: !current.open })),
+          state: () => state,
+          focus: () => undefined,
+          // Driving the selection from outside is what lets a smoke test (or a
+          // support engineer in the devtools console) reach a deep view without
+          // clicking through the tree.
+          initialize: () => initialize(),
+          selectTarget: (id) => selectTarget(id),
+          go: (path) => { setState({ root: path, expanded: {} }); return loadDir(path) },
+          openFile: (path) => openFile(path),
+          refresh: () => refreshWorkspaces(),
+          // The terminal is not a tab object; it always sits one past the last
+          // editor tab, so "activate terminal" is just that index.
+          activateTerminal: () => setState({ active: state.tabs.length }),
+        }
+        return () => {
+          globalThis.removeEventListener('keydown', onKey, true)
+          delete globalThis.__DSH_REMOTE__
+        }
+      }, [])
+
+      // Boot the target list the first time the overlay is opened, so the app
+      // does not pay for it until the user actually asks for the workbench.
+      React.useEffect(() => {
+        if (open && !store.ready) initialize()
+      }, [open, store.ready])
+
+      if (!open) return null
+
+      const tree = h(
+        'div',
+        {
+          className: 'rs-overlay-backdrop ' + (dark ? 'rs-theme-dark' : 'rs-theme-light'),
+          onClick: () => {
+            if (state.pendingClose === null) closeWorkbench()
+          },
         },
-      }
-      return h('span', props, 'R')
+        h(
+          'div',
+          { className: 'rs-overlay-card', onClick: (event) => event.stopPropagation() },
+          h(
+            'div',
+            { className: 'rs-app-head' },
+            h('div', { className: 'rs-app-brand' },
+              h('span', { className: 'rs-logo' }, h(Glyph, { name: 'terminal', size: 14 })),
+              h('span', null, '远程工作台'),
+            ),
+            h('span', { className: 'rs-app-spacer' }),
+            h('span', { className: 'rs-kbd' }, 'Ctrl/⌘ + `'),
+            h('button', { className: 'rs-icon-btn', title: '添加工作区', onClick: () => setAddOpen(true) }, h(Glyph, { name: 'plus', size: 14 })),
+            h('button', { className: 'rs-icon-btn', title: '关闭（Esc）', onClick: closeWorkbench }, h(Glyph, { name: 'close', size: 14 })),
+          ),
+          h('div', { className: 'rs-app-body' }, h(Workspace)),
+        ),
+        h(AddWorkspaceFlow, {
+          open: addOpen,
+          onPicked: async () => {
+            setAddOpen(false)
+            await refreshWorkspaces()
+          },
+          onCancel: () => setAddOpen(false),
+          onError: () => undefined,
+        }),
+      )
+
+      // Onto <body> when possible: the host frame clips overflow, so only a
+      // bodied fixed overlay is guaranteed to cover the whole window.
+      return canPortal() ? ReactDOM.createPortal(tree, document.body) : tree
     }
 
     var inject = ['slots', 'workspaces']
@@ -1900,14 +3086,71 @@ window.__ModuleLoader__.load({
     // remote-ssh plugin did, so the official "＋ 添加工作区" opens our tabs.
     var FLOW_SLOTS = ['conversation.hero.workspace.directoryFlow', 'sidebar.workspaces.directoryFlow']
 
+    // Seats are only materialized once their slot service exists, so each one
+    // is claimed with inject() first — registering directly is a no-op/throw.
+    function registerSeats(ctx, stops) {
+      try {
+        stops.push(
+          ctx.slots.inject('shell.overlay', () =>
+            ctx.slots.register({ name: 'shell.overlay', id: PANEL_ID, order: 100 }, WorkbenchOverlay),
+          ),
+        )
+      } catch (error) {
+        console.error('dsh-remote-suite: the workbench could not mount in shell.overlay', error)
+      }
+      try {
+        stops.push(
+          ctx.slots.inject('sidebar.panellist', () =>
+            ctx.slots.register(
+              { name: 'sidebar.panellist', id: PANEL_ID, order: 47, label: () => '远程' },
+              RailEntry,
+            ),
+          ),
+        )
+      } catch (error) {
+        console.error('dsh-remote-suite: the rail entry could not mount in sidebar.panellist', error)
+      }
+      // The partner of the rail entry: the host resolves a rail click to the
+      // `main` panel sharing the id, so this seat must exist for the icon to
+      // react at all. It renders nothing and opens the floating workbench.
+      try {
+        stops.push(
+          ctx.slots.inject('main', () =>
+            ctx.slots.register(
+              { name: 'main', key: PANEL_ID, inject: () => ({ layout: layoutServices.layout }) },
+              MainLaunch,
+            ),
+          ),
+        )
+      } catch (error) {
+        console.error('dsh-remote-suite: the launch panel could not mount in main', error)
+      }
+    }
+
     function apply(ctx) {
       if (ctx.slots === undefined || ctx.slots === null) {
-        console.error('dsh-remote-suite: this DSH has no slots service; the add-workspace flow stays native')
+        console.error('dsh-remote-suite: this DSH has no slots service; the remote panel stays off')
         return
       }
       ensureStyle()
       workspaceServices.workspaces = typeof ctx.get === 'function' ? ctx.get('workspaces') : null
       workspaceServices.uiWorkspace = typeof ctx.get === 'function' ? ctx.get('uiWorkspace') || null : null
+      layoutServices.layout =
+        typeof ctx.get === 'function' ? ctx.get('layout') || null : null
+      if (layoutServices.layout === null && ctx.layout !== undefined) layoutServices.layout = ctx.layout
+      // The scoped form below is what dshmarket uses, and it is the only one
+      // guaranteed to hand over a live layout service on every host build.
+      if (typeof ctx.inject === 'function') {
+        try {
+          ctx.inject(['layout'], (scoped) => {
+            if (scoped !== undefined && scoped !== null && scoped.layout !== undefined) {
+              layoutServices.layout = scoped.layout
+            }
+          })
+        } catch (error) {
+          console.error('dsh-remote-suite: the layout service could not be resolved', error)
+        }
+      }
       var stops = []
       for (const seat of FLOW_SLOTS) {
         try {
@@ -1920,6 +3163,7 @@ window.__ModuleLoader__.load({
           console.error('dsh-remote-suite: the add-workspace flow could not mount in ' + seat, error)
         }
       }
+      registerSeats(ctx, stops)
       return () => {
         for (const stop of stops) {
           if (typeof stop === 'function') stop()

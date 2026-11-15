@@ -84,6 +84,23 @@ try {
   assert.match(exec.stdout, /hello/)
   console.log('ok  exec')
 
+  // File operations the workbench tree drives: mkdir / rename / remove.
+  const madeDir = await api.mkdir({ target: 'local', path: path.join(root, 'made') })
+  assert.equal(madeDir.path, path.join(root, 'made'))
+  assert.ok((await api.tree({ target: 'local', path: root })).entries.some((e) => e.type === 'dir' && e.name === 'made'))
+
+  const madeFile = await api.write({ target: 'local', path: path.join(root, 'made', 'x.txt'), data: 'x\n' })
+  assert.equal(madeFile.bytes, 2)
+  const renamed = await api.rename({ target: 'local', from: path.join(root, 'made', 'x.txt'), to: path.join(root, 'made', 'y.txt') })
+  assert.equal(renamed.to, path.join(root, 'made', 'y.txt'))
+  assert.equal(await fs.readFile(path.join(root, 'made', 'y.txt'), 'utf8'), 'x\n')
+
+  const removedDir = await api.remove({ target: 'local', path: path.join(root, 'made'), recursive: true })
+  assert.equal(removedDir.path, path.join(root, 'made'))
+  assert.ok(!(await api.tree({ target: 'local', path: root })).entries.some((e) => e.name === 'made'))
+  await assert.rejects(() => api.mkdir({ target: 'nope', path: path.join(root, 'z') }), /unknown target/)
+  console.log('ok  mkdir + rename + remove')
+
   const workspace = await api['workspace-add']({ target: 'local', path: root, name: 'demo' })
   assert.equal(workspace.name, 'demo')
   const relative = await api.read({ workspace: workspace.id, path: 'a.txt' })
@@ -174,6 +191,24 @@ try {
   const preparedWsl = await wslApi['prepare-path']({ target: 'wsl:Ubuntu', path: '/home/me/project' })
   assert.equal(preparedWsl.dshPath, '\\\\wsl.localhost\\Ubuntu\\home\\me\\project')
   console.log('ok  prepare path (local / remote / WSL)')
+
+  // A Docker target whose container is not running (or Docker Desktop is absent)
+  // has no Windows-reachable rootfs, so it must fall back to the mirror layout
+  // instead of handing the host a path that does not exist.
+  const dockerApi = createApi({ registry: remoteRegistry })
+  const preparedStopped = await dockerApi['prepare-path']({
+    target: 'docker:no-such-container-xyz',
+    path: '/srv/app',
+  })
+  assert.ok(path.isAbsolute(preparedStopped.dshPath))
+  assert.ok(preparedStopped.dshPath.includes('mirrors'))
+  assert.equal(preparedStopped.real, undefined)
+  assert.ok((await fs.stat(preparedStopped.dshPath)).isDirectory())
+  assert.equal(
+    JSON.parse(await fs.readFile(path.join(preparedStopped.dshPath, '.dsh-docker.json'), 'utf8')).container,
+    'no-such-container-xyz',
+  )
+  console.log('ok  prepare path (docker without a live rootfs falls back to a mirror)')
 } finally {
   await fs.rm(root, { recursive: true, force: true })
   await fs.rm(stateFile, { force: true })

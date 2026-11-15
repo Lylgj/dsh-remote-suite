@@ -60,6 +60,7 @@ const kit = {
 
 const module = loaded.factory((id) => {
   if (id === 'react') return React
+  if (id === 'react-dom') return { createPortal: (node) => node }
   if (id === '@deepseek-ai/dsh-client-ui-primitives') return kit
   throw new Error(`client asked for an unexpected module: ${id}`)
 })
@@ -85,8 +86,46 @@ const ctx = {
 }
 module.apply(ctx)
 
-assert.ok(!seats.has('sidebar.panellist:remote-suite'), 'the plugin must not add a second rail entry')
-assert.ok(!seats.has('main:remote-suite'), 'the plugin must not take over the main seat')
+// The workbench is the point of the plugin: a Docker/SSH workspace opens onto an
+// empty mirror directory, so the only way to browse and edit the container's real
+// files is this live workbench (tree/read/write all go through `docker exec` /
+// the SSH channel, never the mirror). It mounts in the shell overlay, and the
+// left rail holds the entry that opens it — the user asked for the capsule back
+// in the sidebar instead of next to the composer, so there must be no composer
+// pill and exactly one rail entry.
+assert.ok(seats.has('shell.overlay:remote-suite'), 'the plugin must mount its workbench in shell.overlay')
+assert.ok(seats.has('sidebar.panellist:remote-suite'), 'the plugin must add its rail entry')
+assert.ok(!seats.has('conversation.input.left:remote-suite'), 'the composer pill must be gone')
+// A rail click in the host resolves to the `main` panel sharing the id, so the
+// launcher seat is what makes the icon react at all — without it the click
+// switches to a panel that does not exist and nothing happens.
+assert.ok(
+  seats.has('main:remote-suite'),
+  'the rail entry needs its paired main seat, or a click on the icon does nothing',
+)
+assert.equal(
+  renderToString(React.createElement(seats.get('main:remote-suite'), {})),
+  '',
+  'the launcher must stay invisible; it only opens the floating workbench',
+)
+
+const rail = seats.get('sidebar.panellist:remote-suite')
+assert.equal(typeof rail, 'function')
+// The rail slot is icon-sized, so the entry has two shapes: an icon-sized
+// terminal glyph (no room for text) and the full accent-dot capsule with the
+// 远程 label when the host hands over a genuinely wide slot.
+const railNarrow = renderToString(React.createElement(rail, { size: 16 }))
+assert.match(railNarrow, /rs-rail-btn is-compact/, 'a narrow rail slot gets the compact icon form')
+assert.match(railNarrow, /<svg/, 'the compact form draws an icon, not a bare dot')
+assert.ok(!/rs-rail-txt/.test(railNarrow), 'the compact form must not try to fit the label')
+const railWide = renderToString(React.createElement(rail, { size: 160 }))
+assert.match(railWide, /rs-rail-dot/, 'the wide form keeps the capsule dot')
+assert.match(railWide, /远程/, 'the wide form shows the 远程 label')
+
+const workbench = seats.get('shell.overlay:remote-suite')
+assert.equal(typeof workbench, 'function')
+// Closed by default: the overlay renders nothing until it is opened.
+assert.equal(renderToString(React.createElement(workbench, {})), '', 'the workbench renders nothing while closed')
 // The host's add-workspace dialog is taken over through its flow slots; both
 // registrations must be there and must render nothing while closed.
 for (const seat of ['conversation.hero.workspace.directoryFlow:', 'sidebar.workspaces.directoryFlow:']) {
@@ -100,4 +139,24 @@ for (const seat of ['conversation.hero.workspace.directoryFlow:', 'sidebar.works
   assert.match(open, /远程 SSH/)
 }
 console.log('ok  add-workspace flow mounts')
+
+// File operations must survive a host that predates the mkdir/rename/remove API:
+// each one falls back to the equivalent shell command over `exec`. This is a
+// source-level guard (the render path cannot reach those actions), so it stays
+// honest about the fallback staying wired to the rights call sites and using
+// per-platform quoting that a path with spaces or an apostrophe survives.
+assert.match(source, /function fileOp\(method, payload, buildCommand\)/, 'fileOp fallback helper is present')
+assert.match(source, /unknown api method: \*\(mkdir\|rename\|remove\)/, 'only the "old host" answer triggers the fallback')
+for (const method of ['mkdir', 'rename', 'remove']) {
+  assert.ok(
+    source.includes(`await fileOp('${method}', {`),
+    `${method} goes through fileOp so an older host still works`,
+  )
+}
+assert.match(source, /mkdir -p -- \$\{posixQuote\(path\)\}/, 'posix mkdir fallback')
+assert.match(source, /rm -rf -- \$\{posixQuote\(path\)\}/, 'posix remove fallback')
+assert.match(source, /move \/Y \$\{cmdQuote\(fromPath\)\}/, 'windows rename fallback')
+assert.match(source, /rmdir \/s \/q \$\{cmdQuote\(path\)\}/, 'windows remove fallback')
+assert.match(source, /replace\(\/'\/g, "'\\\\''"\)/, 'posix quoting escapes apostrophes')
+console.log('ok  file operations fall back to exec on an older host')
 console.log('client smoke ok')

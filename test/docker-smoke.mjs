@@ -80,6 +80,31 @@ const found = await backend.glob({ pattern: '**/*.md', root: base })
 assert.deepEqual(found.files.sort(), ['nested/b.md'])
 check('glob finds files relative to the root')
 
+// --- mkdir / rename / remove ------------------------------------------------
+await backend.mkdir({ path: `${base}/made/deep` })
+assert.equal((await backend.stat({ path: `${base}/made/deep` })).type, 'dir')
+check('mkdir creates parents')
+
+await backend.write({ path: `${base}/made/deep/x.txt`, data: 'x\n' })
+await backend.rename({ from: `${base}/made/deep/x.txt`, to: `${base}/made/y.txt` })
+assert.equal(await backend.read({ path: `${base}/made/y.txt` }), 'x\n')
+assert.equal((await backend.stat({ path: `${base}/made/deep` })).type, 'dir')
+check('rename moves across directories')
+
+await backend.remove({ path: `${base}/made`, recursive: true })
+const afterRemove = (await backend.list({ path: base })).entries.map((e) => e.name)
+assert.equal(afterRemove.includes('made'), false)
+check('remove deletes a tree')
+
+// Quotes and spaces must survive the shell round trip.
+await backend.mkdir({ path: `${base}/it's a dir` })
+await backend.write({ path: `${base}/it's a dir/a b.txt`, data: 'q\n' })
+assert.equal(await backend.read({ path: `${base}/it's a dir/a b.txt` }), 'q\n')
+await backend.rename({ from: `${base}/it's a dir/a b.txt`, to: `${base}/it's a dir/c d.txt` })
+assert.equal(await backend.read({ path: `${base}/it's a dir/c d.txt` }), 'q\n')
+await backend.remove({ path: `${base}/it's a dir`, recursive: true })
+check('mkdir/rename/remove survive quotes and spaces')
+
 // --- errors -----------------------------------------------------------------
 await assert.rejects(() => backend.list({ path: `${base}/missing` }), /not a directory/)
 await assert.rejects(() => backend.read({ path: `${base}/missing` }), /not a file/)

@@ -1,7 +1,7 @@
 {
   "name": "@lylgj/dsh-remote-suite",
   "version": "0.1.0",
-  "description": "WSL, SSH, Docker and remote-daemon workspaces in one DeepSeek Harness plugin: one Backend seam, one sidebar entry, one `remote` tool.",
+  "description": "WSL, SSH, Docker and remote-daemon workspaces in one DeepSeek Harness plugin: one Backend seam, one remote workbench, one `remote` tool.",
   "type": "module",
   "main": "index.js",
   "author": "Lylgj",
@@ -71,7 +71,7 @@
     "manifestVersion": 1
   },
   "scripts": {
-    "test": "node test/smoke.mjs && node test/api-smoke.mjs && node test/client-smoke.mjs && node test/pty-smoke.mjs && node test/docker-smoke.mjs && node test/secrets-smoke.mjs && node test/mirror-smoke.mjs && node test/errors-smoke.mjs",
+    "test": "node test/smoke.mjs && node test/api-smoke.mjs && node test/client-smoke.mjs && node test/tool-smoke.mjs && node test/pty-smoke.mjs && node test/docker-smoke.mjs && node test/secrets-smoke.mjs && node test/mirror-smoke.mjs && node test/errors-smoke.mjs",
     "test:ssh": "node test/ssh-smoke.mjs",
     "test:jump": "node test/ssh-jump-smoke.mjs",
     "test:daemon": "node test/daemon-smoke.mjs",

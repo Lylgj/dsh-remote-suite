@@ -63,6 +63,12 @@ const registry = {
     return {
       id: 'local',
       label: '本地',
+      // A bare target has no workspace base, so the PTY server must fall back to
+      // the backend home rather than passing `undefined` as the working
+      // directory (the Host dereferences it and would throw).
+      async home() {
+        return '/home/tester'
+      },
       async openTerminal(options) {
         const session = fakeTerminal(options)
         sessions.push(session)
@@ -114,7 +120,8 @@ assert.equal(ready.t, 'ready')
 assert.equal(ready.cols, 400)
 assert.equal(ready.rows, 200)
 assert.equal(ready.target, 'local')
-check('open clamps the terminal size and answers ready')
+assert.equal(ready.cwd, '/home/tester')
+check('open clamps the terminal size and falls back to the backend home for cwd')
 
 first.ws.send(JSON.stringify({ t: 'data', d: 'hello' }))
 const echoed = await first.next()

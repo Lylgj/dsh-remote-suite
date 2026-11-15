@@ -13,20 +13,35 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
 
 - **四类工作区**：官方「＋ 添加工作区」对话框里多出 本机 / WSL / Docker / 远程 SSH 四个标签页；
   选好目录后就是一个普通工作区，DSH 自带的文件树、终端与 agent 都能照常使用。
-- **一个工具管全部**：`remote` 有 19 个 action——执行命令、读 / 写 / 改文件、`grep`、`glob`、列目录、
-  保存工作区、镜像同步——目标从 WSL 换成 Docker 或 SSH，参数写法不变。
+  **Docker 工作区在容器运行时会直接指向容器里的真实文件**（Docker Desktop 的 9p 路径，
+  和 WSL 工作区一样开箱可用，不经过镜像）；容器停止时自动退回本地镜像目录。
+- **「远程工作台」**：一个 mini VS Code 形态的整屏工作台——目标切换器 + **远端真文件树**（右键新建 /
+  重命名 / 删除）+ 多页签编辑器（行号、语法高亮、未保存确认）+ 进容器的终端（**配色跟随 DSH 主题**）+ 端口转发。
+  入口是左侧栏的「远程」条目（accent 色调的终端图标；栏位宽时才展开成带「远程」字样的圆点胶囊），或全局快捷键 `Ctrl + \``（`⌘ + \``）。
+  Docker / SSH 工作区也能用这块工作台：它的
+  `tree` / `read` / `write` / `mkdir` / `rename` / `remove` 全部经 API 直接在远端执行（Docker 走
+  `docker exec`），不做本地镜像。SSH 工作区在 DSH 里打开的是空镜像目录，看远端真文件就用这块工作台。
+- **一个工具管全部**：`remote` 有 22 个 action——执行命令、读 / 写 / 改文件、`mkdir` / `rename` /
+  `remove`、`grep`、`glob`、列目录、保存工作区、镜像同步——目标从 WSL 换成 Docker 或 SSH，参数写法不变。
 - **远程 SSH**：主机直接读 `~/.ssh/config`，也能在对话框里新增；别名可以用中文；密钥、ssh-agent、
   密码三种认证都支持，密码单独存 `secrets.json`（0600，从不回显）。
 - **多跳登录**：`ProxyJump` 支持任意跳数，别名或 `user@host:port` 都行。
 - **常驻会话**：`daemon:<别名>` 让 `cd`、`export`、shell 函数跨命令保留——顺手可以在远端起一个
   `dsh web`。
 - **Docker**：只依赖 `docker` CLI，Docker Desktop、`DOCKER_HOST`、`podman` / `nerdctl` 都能用；
-  工作区里的 `.dsh-docker.json` 标记让 `@lylgj/dsh-terminal` 打开终端时直接 `docker exec -it` 进容器。
+  在 Docker Desktop 上，容器运行中的工作区直接落在容器真文件（Windows 侧
+  `\\wsl.localhost\docker-desktop\...\overlayfs\<容器 Id>`）；工作区里的 `.dsh-docker.json` 标记让
+  `@lylgj/dsh-terminal` 打开终端时直接 `docker exec -it` 进容器。
 - **WSL**：工作区落在 `\\wsl.localhost\<发行版>\<路径>`，走 DSH 原生文件树，不经过镜像。
 - **镜像同步**：把远端目录拉到本地一份，供桌面编辑器、搜索和 `git` 使用；32 KB 分块传输，远端不需要
   `tar` / `rsync`，二进制文件完好。
 
 ## 界面
+
+<p>
+  <img src="docs/assets/screenshots/workbench-dark.png" alt="远程工作台：深色主题，左侧分组侧栏 + 多页签编辑器（行号与语法高亮）+ 常驻终端" width="49%">
+  <img src="docs/assets/screenshots/workbench-light.png" alt="远程工作台：浅色主题，随宿主配色自动切换" width="49%">
+</p>
 
 <p>
   <img src="docs/assets/screenshots/local-workspace.png" alt="本机工作区：盘符切换与目录浏览" width="32%">
