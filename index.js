@@ -25,7 +25,8 @@ import { createRegistry } from './lib/backends/index.js'
 import { explain } from './lib/errors.js'
 import { createPtyServer } from './lib/pty-server.js'
 import { createPtySpawner } from './lib/pty.js'
-import { loadState } from './lib/state.js'
+import { createSidebarFs, statusOf, wireError } from './lib/sidebar-fs.js'
+import { dataDir, loadState } from './lib/state.js'
 import { createRemoteTool } from './lib/tool-remote.js'
 
 export const name = 'remote-suite'
@@ -39,6 +40,13 @@ const ASSET_BASE = '/remote-suite/assets'
 
 /** WebSocket route for terminal sessions. */
 const PTY_PATH = '/remote-suite/pty'
+
+/**
+ * The file API the right sidebar calls. The method names, payloads and response
+ * shapes are better-sidebar's (`fs.tree`, `fs.read`, `fs.write`, …); only the
+ * mount point is ours, so both plugins can be installed without shadowing.
+ */
+const SIDEBAR_BASE = '/remote-suite/sidebar'
 
 /** Largest request body the API accepts (a full editor buffer). */
 const MAX_BODY_BYTES = 8 * 1024 * 1024
@@ -112,6 +120,34 @@ export function apply(ctx, config = {}) {
   const api = createApi({ registry })
   const disposers = [ctx.tools.register(createRemoteTool({ registry, config }))]
 
+  // The `sessions` service is what turns a sessionId into the working directory
+  // whose files the sidebar should list. It is optional: a Host without it falls
+  // back to the `cwd` the browser sends along.
+  let sessionsService
+  ctx.inject(['sessions'], (scoped) => {
+    sessionsService = scoped.sessions
+  })
+
+  const sessionCwd = async (sessionId, clientCwd) => {
+    try {
+      const session = sessionsService?.get?.(sessionId)
+      if (session !== undefined) {
+        const workdir = ctx.get?.('workingDirectory')
+        const cwd = (typeof workdir?.get === 'function' ? workdir.get(session) : undefined) ?? session?.header?.cwd
+        if (typeof cwd === 'string' && cwd !== '') return cwd
+      }
+    } catch {
+      // Fall through to whatever the browser knows.
+    }
+    return clientCwd
+  }
+
+  const sidebarFs = createSidebarFs({
+    registry,
+    mirrorsDir: join(dataDir(), 'mirrors'),
+    sessionCwd,
+  })
+
   const mountApi = (webServer) => {
     const dispose = webServer.register({
       kind: 'prefix',
@@ -167,12 +203,113 @@ export function apply(ctx, config = {}) {
     return dispose
   }
 
+  /**
+   * Better-sidebar's filesystem wire format, served by this plugin.
+   *
+   *   POST /remote-suite/sidebar/api/<method>   JSON in, `{ ok, value }` out
+   *   POST /remote-suite/sidebar/write          raw UTF-8 body, query params
+   *   GET  /remote-suite/sidebar/file           raw bytes with a content type
+   */
+  const mountSidebar = (webServer) => {
+    const dispose = webServer.register({
+      kind: 'prefix',
+      path: SIDEBAR_BASE,
+      handler: async (req, res) => {
+        const url = new URL(req.url || '/', 'http://remote-suite.invalid')
+        const rest = url.pathname.slice(SIDEBAR_BASE.length) || '/'
+        const query = {
+          sessionId: url.searchParams.get('sessionId') ?? undefined,
+          cwd: url.searchParams.get('cwd') ?? undefined,
+          path: url.searchParams.get('path') ?? undefined,
+          expectedMtimeMs: (() => {
+            const raw = url.searchParams.get('expectedMtimeMs')
+            const parsed = raw === null ? Number.NaN : Number(raw)
+            return Number.isFinite(parsed) ? parsed : undefined
+          })(),
+        }
+        try {
+          if (req.headers[CLIENT_HEADER] !== '1') {
+            sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+            return
+          }
+          if (rest === '/write') {
+            if (req.method !== 'POST') {
+              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+              return
+            }
+            const content = await readBody(req)
+            const written = await sidebarFs.writeText({ ...query, content })
+            sidebarFs.invalidate()
+            sendJson(res, 200, { ok: true, value: { ok: true, mtimeMs: written.mtimeMs } })
+            return
+          }
+          if (rest === '/file') {
+            if (req.method !== 'GET') {
+              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+              return
+            }
+            const file = await sidebarFs.readAll(query)
+            const total = file.buffer.length
+            const range = typeof req.headers.range === 'string' ? /^bytes=(\d*)-(\d*)$/.exec(req.headers.range.trim()) : null
+            const headers = {
+              'content-type': mediaType(file.path),
+              'cache-control': 'no-cache',
+              'accept-ranges': 'bytes',
+              'x-content-type-options': 'nosniff',
+              'referrer-policy': 'no-referrer',
+            }
+            if (range !== null) {
+              const start = range[1] === '' ? 0 : Number(range[1])
+              const end = range[2] === '' ? total - 1 : Math.min(Number(range[2]), total - 1)
+              if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= total) {
+                res.writeHead(416, { 'content-range': `bytes */${total}` })
+                res.end()
+                return
+              }
+              res.writeHead(206, { ...headers, 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/${total}` })
+              res.end(file.buffer.subarray(start, end + 1))
+              return
+            }
+            res.writeHead(200, { ...headers, 'content-length': String(total) })
+            res.end(file.buffer)
+            return
+          }
+          if (rest.startsWith('/api/')) {
+            if (req.method !== 'POST') {
+              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+              return
+            }
+            const method = rest.slice('/api/'.length)
+            const fn = sidebarFs.methods[method]
+            if (typeof fn !== 'function') {
+              sendJson(res, 404, { ok: false, error: { code: 'not-found', message: `unknown fs method: ${method}` } })
+              return
+            }
+            const raw = await readBody(req)
+            const payload = raw === '' ? {} : JSON.parse(raw)
+            const value = await fn(payload === null || typeof payload !== 'object' ? {} : payload)
+            if (method !== 'fs.tree' && method !== 'fs.trees' && method !== 'fs.read' && method !== 'fs.readPage' && method !== 'fs.search') {
+              sidebarFs.invalidate()
+            }
+            sendJson(res, 200, { ok: true, value })
+            return
+          }
+          sendJson(res, 404, { ok: false, error: { code: 'not-found', message: 'not found' } })
+        } catch (error) {
+          sendJson(res, statusOf(error), { ok: false, error: wireError(error) })
+        }
+      },
+    })
+    return dispose
+  }
+
   // `webServer` is optional: a bare CLI host has no routes to serve, and the
   // `remote` tool must keep working there.
   const offWeb = ctx.inject(['webServer'], (scoped) => {
     try {
       disposers.push(mountApi(scoped.webServer))
       disposers.push(mountAssets(scoped.webServer))
+      disposers.push(mountSidebar(scoped.webServer))
       const pty = createPtyServer({ registry, WebSocketServer: loadWebSocketServer() })
       disposers.push(() => pty.dispose())
       disposers.push(
@@ -216,6 +353,33 @@ export function apply(ctx, config = {}) {
     registry.dispose()
     if (typeof api.dispose === 'function') api.dispose()
   }
+}
+
+/** Content type for a preview/download route, by extension. */
+const MEDIA_TYPES = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+  txt: 'text/plain; charset=utf-8',
+  log: 'text/plain; charset=utf-8',
+  md: 'text/markdown; charset=utf-8',
+  json: 'application/json; charset=utf-8',
+  xml: 'application/xml; charset=utf-8',
+  html: 'text/html; charset=utf-8',
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+}
+
+function mediaType(path) {
+  const match = /\.([a-z0-9]+)$/i.exec(String(path))
+  const ext = match === null ? '' : match[1].toLowerCase()
+  return MEDIA_TYPES[ext] ?? 'application/octet-stream'
 }
 
 /**

@@ -1,0 +1,207 @@
+// Smoke test for lib/sidebar-fs.js: the better-sidebar-shaped file API.
+//
+// The local half runs against a real temp directory. The remote half runs
+// against a stub backend that maps POSIX paths onto a second temp directory and
+// answers the one shell command the ranged reader issues
+// (`tail -c +N … | head -c L … | base64 -w0`).
+
+import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { createSidebarFs, SidebarError } from '../lib/sidebar-fs.js'
+
+const root = await mkdtemp(join(tmpdir(), 'rs-sidebar-'))
+
+/** The remote namespace the marker advertises. */
+const REMOTE_ROOT = '/srv/app'
+const localRoot = join(root, 'local')
+const remoteRoot = join(root, 'remote')
+const mirrors = join(root, 'mirrors')
+const mirrorDir = join(mirrors, 'ssh-demo-01234567', 'ws-demo')
+
+await mkdir(join(localRoot, 'sub'), { recursive: true })
+await writeFile(join(localRoot, 'a.txt'), 'hello\nworld\n', 'utf8')
+await writeFile(join(localRoot, 'sub', 'b.txt'), 'needle here\n', 'utf8')
+await writeFile(join(localRoot, 'bin.dat'), Buffer.from([0, 1, 2, 3]))
+
+await mkdir(join(remoteRoot, 'sub'), { recursive: true })
+await writeFile(join(remoteRoot, 'r.txt'), 'remote needle\n', 'utf8')
+await mkdir(mirrorDir, { recursive: true })
+await writeFile(join(mirrorDir, '.dsh-remote.json'), JSON.stringify({ targetId: 'ssh:demo', path: REMOTE_ROOT }), 'utf8')
+
+/** Map one advertised POSIX path onto the temp directory that stands for it. */
+function remotePath(value) {
+  const normalized = String(value).replace(/\\/g, '/').replace(/\/+$/, '')
+  if (normalized !== REMOTE_ROOT && !normalized.startsWith(`${REMOTE_ROOT}/`)) throw new Error(`outside remote root: ${value}`)
+  return join(remoteRoot, normalized.slice(REMOTE_ROOT.length))
+}
+
+const remoteBackend = {
+  async stat({ path }) {
+    const { stat } = await import('node:fs/promises')
+    try {
+      const info = await stat(remotePath(path))
+      return {
+        type: info.isDirectory() ? 'dir' : 'file',
+        size: info.size,
+        mtimeMs: info.mtimeMs,
+      }
+    } catch {
+      throw new Error('ENOENT')
+    }
+  },
+  async list({ path }) {
+    const { readdir } = await import('node:fs/promises')
+    const dir = remotePath(path)
+    const dirents = await readdir(dir, { withFileTypes: true })
+    return {
+      entries: dirents.map((dirent) => ({ name: dirent.name, type: dirent.isDirectory() ? 'dir' : 'file', size: 0 })),
+      truncated: false,
+    }
+  },
+  async write({ path, data }) {
+    await writeFile(remotePath(path), data, 'utf8')
+    return { bytes: Buffer.byteLength(data, 'utf8') }
+  },
+  async mkdir({ path }) {
+    await mkdir(remotePath(path))
+    return { path }
+  },
+  async rename({ from, to }) {
+    const { rename } = await import('node:fs/promises')
+    await rename(remotePath(from), remotePath(to))
+    return { from, to }
+  },
+  async remove({ path }) {
+    const { rm } = await import('node:fs/promises')
+    await rm(remotePath(path), { recursive: true, force: true })
+    return { path }
+  },
+  async exec({ command }) {
+    // The only command the ranged reader issues.
+    const match = /tail -c \+(\d+) -- '([^']*)' \| head -c (\d+) \| base64 -w0/.exec(command)
+    if (match === null) return { stdout: '', stderr: `unsupported: ${command}`, exitCode: 1, timedOut: false, truncated: false }
+    const start = Number(match[1]) - 1
+    const length = Number(match[3])
+    try {
+      const buffer = await readFile(remotePath(match[2]))
+      return { stdout: buffer.subarray(start, start + length).toString('base64'), stderr: '', exitCode: 0, timedOut: false, truncated: false }
+    } catch (error) {
+      return { stdout: '', stderr: String(error), exitCode: 1, timedOut: false, truncated: false }
+    }
+  },
+}
+
+const fs = createSidebarFs({
+  registry: {
+    async backend(id) {
+      if (id !== 'ssh:demo') throw new Error(`unknown target ${id}`)
+      return remoteBackend
+    },
+  },
+  mirrorsDir: mirrors,
+  sessionCwd: async (sessionId) => (sessionId === 's-remote' ? mirrorDir : localRoot),
+})
+
+// --- local -----------------------------------------------------------------
+
+const tree = await fs.methods['fs.tree']({ sessionId: 's-local' })
+assert.equal(tree.path, localRoot)
+assert.deepEqual(tree.entries.map((entry) => entry.name), ['sub', 'a.txt', 'bin.dat'])
+assert.equal(tree.entries[0].isDir, true)
+assert.equal(tree.entries[1].isDir, false)
+assert.equal(tree.entries[1].hidden, false)
+
+const sub = await fs.methods['fs.tree']({ sessionId: 's-local', path: join(localRoot, 'sub') })
+assert.deepEqual(sub.entries.map((entry) => entry.name), ['b.txt'])
+
+const text = await fs.methods['fs.read']({ sessionId: 's-local', path: join(localRoot, 'a.txt') })
+assert.deepEqual(text, { kind: 'text', content: 'hello\nworld\n', size: 12, mtimeMs: text.mtimeMs })
+
+const binary = await fs.methods['fs.read']({ sessionId: 's-local', path: join(localRoot, 'bin.dat') })
+assert.equal(binary.kind, 'binary')
+assert.equal(binary.head, Buffer.from([0, 1, 2, 3]).toString('base64'))
+
+const page = await fs.methods['fs.readPage']({ sessionId: 's-local', path: join(localRoot, 'a.txt') })
+assert.equal(page.text, 'hello\nworld\n')
+assert.equal(page.nextOffset, 12)
+assert.equal(page.eof, true)
+
+const searched = await fs.methods['fs.search']({ sessionId: 's-local', query: 'needle' })
+assert.deepEqual(searched.matches, ['sub/b.txt'])
+
+const created = await fs.methods['fs.createFile']({ sessionId: 's-local', path: localRoot, name: 'new.txt' })
+assert.equal(created.path, join(localRoot, 'new.txt'))
+await assert.rejects(fs.methods['fs.createFile']({ sessionId: 's-local', path: localRoot, name: 'new.txt' }), (error) => {
+  assert.ok(error instanceof SidebarError)
+  assert.equal(error.code, 'fs-error')
+  return true
+})
+
+const madeDir = await fs.methods['fs.mkdir']({ sessionId: 's-local', path: localRoot, name: 'made' })
+assert.equal(madeDir.path, join(localRoot, 'made'))
+
+const renamed = await fs.methods['fs.rename']({ sessionId: 's-local', path: join(localRoot, 'new.txt'), name: 'renamed.txt' })
+assert.equal(renamed.path, join(localRoot, 'renamed.txt'))
+
+const written = await fs.writeText({ sessionId: 's-local', path: join(localRoot, 'renamed.txt'), content: 'fresh body\n' })
+assert.equal(await readFile(join(localRoot, 'renamed.txt'), 'utf8'), 'fresh body\n')
+await assert.rejects(
+  fs.writeText({ sessionId: 's-local', path: join(localRoot, 'renamed.txt'), content: 'stale', expectedMtimeMs: Math.floor(written.mtimeMs) - 5000 }),
+  (error) => {
+    assert.equal(error.code, 'fs-conflict')
+    assert.equal(error.status, 409)
+    return true
+  },
+)
+
+await fs.methods['fs.remove']({ sessionId: 's-local', path: join(localRoot, 'made') })
+await assert.rejects(fs.methods['fs.tree']({ sessionId: 's-local', path: join(localRoot, 'made') }), (error) => {
+  assert.equal(error.code, 'not-found')
+  assert.equal(error.status, 404)
+  return true
+})
+
+// Escaping the workspace is refused, not silently clamped.
+await assert.rejects(fs.methods['fs.read']({ sessionId: 's-local', path: join(root, 'outside.txt') }), (error) => {
+  assert.equal(error.code, 'bad-request')
+  return true
+})
+await assert.rejects(fs.methods['fs.mkdir']({ sessionId: 's-local', path: localRoot, name: '..' }), (error) => {
+  assert.equal(error.code, 'bad-request')
+  return true
+})
+
+// --- remote ----------------------------------------------------------------
+
+const remoteTree = await fs.methods['fs.tree']({ sessionId: 's-remote' })
+assert.equal(remoteTree.path, REMOTE_ROOT)
+assert.deepEqual(remoteTree.entries.map((entry) => entry.name), ['sub', 'r.txt'])
+
+const remoteText = await fs.methods['fs.read']({ sessionId: 's-remote', path: `${REMOTE_ROOT}/r.txt` })
+assert.equal(remoteText.kind, 'text')
+assert.equal(remoteText.content, 'remote needle\n')
+
+const remotePage = await fs.methods['fs.readPage']({ sessionId: 's-remote', path: `${REMOTE_ROOT}/r.txt` })
+assert.equal(remotePage.text, 'remote needle\n')
+
+const remoteWrite = await fs.writeText({ sessionId: 's-remote', path: `${REMOTE_ROOT}/r.txt`, content: 'rewritten\n' })
+assert.equal(typeof remoteWrite.mtimeMs, 'number')
+assert.equal(await readFile(join(remoteRoot, 'r.txt'), 'utf8'), 'rewritten\n')
+
+const remoteCreated = await fs.methods['fs.createFile']({ sessionId: 's-remote', path: REMOTE_ROOT, name: 'x.txt' })
+assert.equal(remoteCreated.path, `${REMOTE_ROOT}/x.txt`)
+
+const remoteRemoved = await fs.methods['fs.remove']({ sessionId: 's-remote', path: `${REMOTE_ROOT}/x.txt` })
+assert.equal(remoteRemoved.path, `${REMOTE_ROOT}/x.txt`)
+
+// A remote path outside the workspace is refused too.
+await assert.rejects(fs.methods['fs.read']({ sessionId: 's-remote', path: '/etc/passwd' }), (error) => {
+  assert.equal(error.code, 'bad-request')
+  return true
+})
+
+await rm(root, { recursive: true, force: true })
+console.log('sidebar-fs smoke: ok')

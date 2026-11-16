@@ -69,10 +69,27 @@ assert.equal(typeof module.apply, 'function')
 assert.equal(module.inject.join(','), 'slots,workspaces')
 
 const seats = new Map()
+const tabTypes = []
 const ctx = {
   get(name) {
     if (name === 'workspaces') return { create: async () => ({ workspaceId: 'w1' }) }
     return undefined
+  },
+  inject(deps, callback) {
+    if (!deps.includes('sidebarRightTabs')) return undefined
+    callback({
+      slots: ctx.slots,
+      sidebarRightTabs: {
+        register(definition) {
+          tabTypes.push(definition)
+          return () => {}
+        },
+      },
+      effect(run) {
+        return run()
+      },
+    })
+    return () => {}
   },
   slots: {
     inject(_name, callback) {
@@ -108,6 +125,29 @@ assert.equal(
   '',
   'the launcher must stay invisible; it only opens the floating workbench',
 )
+
+// The right sidebar's "工作区文件" pane belongs to us now: the official pane only
+// knows host paths, and a remote workspace lives behind SSH/Docker. We claim the
+// `files` kind at extension level so our pane wins, and register its body under
+// the same key the tab definition uses.
+assert.equal(tabTypes.length, 1, 'the plugin must claim exactly one right-sidebar tab kind')
+assert.equal(tabTypes[0].id, 'remote-suite/files')
+assert.equal(tabTypes[0].kind, 'files', 'the tab must replace the host pane, not add a second kind')
+assert.equal(tabTypes[0].priority, 'extension', 'an extension-level claim beats the builtin pane')
+assert.equal(tabTypes[0].canOpen('dsh-resource://file/absolute/C:/work'), true)
+assert.equal(tabTypes[0].title(), '文件')
+assert.equal(tabTypes[0].guide.length, 1)
+assert.equal(tabTypes[0].guide[0].commandId, 'workspace.files')
+assert.ok(
+  seats.has('sidebar.right.pane.tab:remote-suite/files'),
+  'the files pane body must be registered under the tab key',
+)
+assert.equal(typeof seats.get('sidebar.right.pane.tab:remote-suite/files'), 'function')
+const filesPane = renderToString(
+  React.createElement(seats.get('sidebar.right.pane.tab:remote-suite/files'), { sessionId: 's1' }),
+)
+assert.ok(filesPane.includes('rs-sf'), 'the files pane must render its own shell')
+assert.ok(filesPane.includes('刷新'), 'the files pane must offer the directory actions')
 
 const rail = seats.get('sidebar.panellist:remote-suite')
 assert.equal(typeof rail, 'function')

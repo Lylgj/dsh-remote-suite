@@ -1147,6 +1147,53 @@ window.__ModuleLoader__.load({
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsh-accent, #4b8bf5) 18%, transparent);
       }
       .rs-rail-txt { font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+      /* The right sidebar's files tab. It replaces the host's own "工作区文件"
+         pane for every workspace, so it has to feel like a native list: a bar
+         with breadcrumbs and the few actions, then rows or an editor. */
+      .rs-sf { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; font-size: 12px; }
+      .rs-sf-bar {
+        display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+        padding: 7px 10px; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+      }
+      .rs-sf-crumbs {
+        flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        font-size: 11px; opacity: 0.72;
+      }
+      .rs-sf-btn {
+        flex: 0 0 auto; height: 24px; padding: 0 9px; border-radius: 6px; cursor: pointer;
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        background: transparent; color: inherit; font-size: 11px; white-space: nowrap;
+      }
+      .rs-sf-btn:hover { background: var(--dsh-hover, rgba(127,127,127,0.13)); }
+      .rs-sf-btn:disabled { opacity: 0.45; cursor: default; }
+      .rs-sf-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 6px 10px; }
+      .rs-sf-row {
+        display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px;
+        border-radius: 6px; cursor: pointer; user-select: none;
+      }
+      .rs-sf-row:hover { background: var(--dsh-hover, rgba(127,127,127,0.12)); }
+      .rs-sf-row.is-on { background: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 16%, transparent); }
+      .rs-sf-icon { flex: 0 0 auto; width: 14px; text-align: center; opacity: 0.62; }
+      .rs-sf-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rs-sf-meta { flex: 0 0 auto; font-size: 11px; opacity: 0.5; }
+      .rs-sf-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+      .rs-sf-text {
+        flex: 1 1 auto; min-height: 0; width: 100%; resize: none; border: 0; outline: none;
+        padding: 10px 12px; background: transparent; color: inherit;
+        font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+        tab-size: 2;
+      }
+      .rs-sf-image { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; text-align: center; }
+      .rs-sf-image img { max-width: 100%; border-radius: 8px; }
+      .rs-sf-err { flex: 0 0 auto; padding: 7px 12px; color: #e11d48; font-size: 11px; }
+      .rs-sf-empty { padding: 26px 14px; text-align: center; opacity: 0.6; line-height: 1.7; }
+      .rs-sf-input {
+        flex: 1 1 auto; min-width: 0; height: 24px; padding: 0 8px; border-radius: 6px;
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        background: transparent; color: inherit; font-size: 12px; outline: none;
+      }
+      .rs-sf-input:focus { border-color: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 62%, transparent); }
     `
 
     /**
@@ -1623,7 +1670,7 @@ window.__ModuleLoader__.load({
     // mirror directory and the remote path stays in this plugin's state.
     // ---------------------------------------------------------------------
 
-    const workspaceServices = { workspaces: null, uiWorkspace: null }
+    const workspaceServices = { workspaces: null, uiWorkspace: null, sessions: null }
 
     // The host layout service is only needed by the rail launcher, which has to
     // hand the main area back after it opens the floating workbench.
@@ -3088,6 +3135,517 @@ window.__ModuleLoader__.load({
 
     // Seats are only materialized once their slot service exists, so each one
     // is claimed with inject() first — registering directly is a no-op/throw.
+    // ------------------------------------------------------------ files tab
+    //
+    // The right sidebar's "工作区文件" pane. The host half serves it through our
+    // own routes (`/remote-suite/sidebar/...`), but the wire contract is the one
+    // dsh-better-sidebar documents — see docs/better-sidebar-file-api.md: a POST
+    // per method with a JSON body and a `{ ok, value }` / `{ ok, error }`
+    // envelope, raw text through /write, raw bytes through /file. Keeping our own
+    // path means better-sidebar can stay installed: it owns `/sidebar/*`, we own
+    // `/remote-suite/sidebar/*`, and each tab kind is claimed once.
+    const SIDEBAR_BASE = '/remote-suite/sidebar'
+    const SIDEBAR_HEADERS = { 'content-type': 'application/json', 'x-remote-suite': '1' }
+
+    function sidebarCall(method, payload) {
+      const body = payload === undefined ? {} : payload
+      return fetch(SIDEBAR_BASE + '/api/' + method, {
+        method: 'POST',
+        headers: SIDEBAR_HEADERS,
+        body: JSON.stringify(body),
+      }).then(
+        (res) =>
+          res
+            .json()
+            .catch(() => null)
+            .then((parsed) => {
+              if (parsed !== null && parsed.ok === true) return parsed.value
+              const error = (parsed !== null && parsed.ok === false && parsed.error) || {}
+              const failure = new Error(error.message || 'HTTP ' + res.status)
+              failure.code = error.code || 'internal'
+              throw failure
+            }),
+        (error) => {
+          const failure = new Error(error && error.message ? error.message : 'network error')
+          failure.code = 'network'
+          throw failure
+        },
+      )
+    }
+
+    function sessionCwdOf(sessionId) {
+      const service = workspaceServices.sessions
+      if (!service || typeof sessionId !== 'string' || sessionId === '') return undefined
+      try {
+        const snapshot = service.list.getSnapshot()
+        const entry = snapshot !== undefined && snapshot.byId !== undefined ? snapshot.byId[sessionId] : undefined
+        return entry !== undefined && typeof entry.cwd === 'string' ? entry.cwd : undefined
+      } catch (error) {
+        return undefined
+      }
+    }
+
+    function filesJoin(dir, name) {
+      if (dir === '') return name
+      const last = dir.charAt(dir.length - 1)
+      if (last === '/' || last === '\\') return dir + name
+      return dir + (dir.indexOf('\\') >= 0 && dir.indexOf('/') < 0 ? '\\' : '/') + name
+    }
+
+    function filesParent(dir) {
+      const cut = Math.max(dir.lastIndexOf('/'), dir.lastIndexOf('\\'))
+      if (cut < 0) return dir
+      const head = dir.slice(0, cut)
+      if (head === '') return dir.slice(0, 1)
+      if (/^[A-Za-z]:$/.test(head)) return head + dir.charAt(cut)
+      return head
+    }
+
+    function filesBaseName(path) {
+      const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+      return cut < 0 ? path : path.slice(cut + 1)
+    }
+
+    function filesBytes(size) {
+      if (typeof size !== 'number' || !isFinite(size)) return ''
+      if (size < 1024) return size + ' B'
+      if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB'
+      return (size / (1024 * 1024)).toFixed(1) + ' MB'
+    }
+
+    function filesErrorText(error) {
+      if (error === null || error === undefined) return ''
+      return typeof error.message === 'string' && error.message !== '' ? error.message : String(error)
+    }
+
+    function FilesPanel(props) {
+      const sessionId = typeof props.sessionId === 'string' ? props.sessionId : ''
+      const cwd = sessionCwdOf(sessionId)
+      const scope = React.useMemo(() => ({ sessionId, cwd }), [sessionId, cwd])
+      const [root, setRoot] = React.useState('')
+      const [dir, setDir] = React.useState('')
+      const [rows, setRows] = React.useState([])
+      const [truncated, setTruncated] = React.useState(false)
+      const [busy, setBusy] = React.useState(false)
+      const [error, setError] = React.useState(null)
+      const [doc, setDoc] = React.useState(null)
+      const [text, setText] = React.useState('')
+      const [dirty, setDirty] = React.useState(false)
+      const [naming, setNaming] = React.useState(null)
+      const [name, setName] = React.useState('')
+      const [query, setQuery] = React.useState('')
+      const [hits, setHits] = React.useState(null)
+
+      const load = React.useCallback(
+        (path) =>
+          sidebarCall('fs.tree', path === undefined ? scope : Object.assign({ path }, scope)).then(
+            (value) => {
+              setRoot((previous) => (previous === '' ? value.path : previous))
+              setDir(value.path)
+              setRows(value.entries || [])
+              setTruncated(value.truncated === true)
+              setError(null)
+              return value
+            },
+            (failure) => {
+              setError(filesErrorText(failure))
+              return null
+            },
+          ),
+        [scope],
+      )
+
+      React.useEffect(() => {
+        if (sessionId === '' && cwd === undefined) return
+        setDoc(null)
+        setHits(null)
+        setDirty(false)
+        load(undefined)
+      }, [sessionId, cwd, load])
+
+      function guarded(promise) {
+        setBusy(true)
+        return promise.then(
+          (value) => {
+            setBusy(false)
+            return value
+          },
+          (failure) => {
+            setBusy(false)
+            setError(filesErrorText(failure))
+            return null
+          },
+        )
+      }
+
+      function enter(entry) {
+        if (entry.isDir === true) {
+          setHits(null)
+          setDoc(null)
+          guarded(load(entry.path))
+          return
+        }
+        open(entry.path)
+      }
+
+      function open(path) {
+        setDoc({ path, kind: 'text', size: 0, mtimeMs: 0 })
+        setText('')
+        setDirty(false)
+        guarded(
+          sidebarCall('fs.read', Object.assign({ path }, scope)).then(
+            (value) => {
+              setDoc(Object.assign({ path }, value))
+              setText(value.kind === 'text' ? value.content || '' : '')
+              return value
+            },
+            (failure) => {
+              setDoc(null)
+              setError(filesErrorText(failure))
+              return null
+            },
+          ),
+        )
+      }
+
+      function save() {
+        if (doc === null || doc.kind !== 'text') return
+        const url =
+          SIDEBAR_BASE +
+          '/write?' +
+          new URLSearchParams({
+            sessionId,
+            path: doc.path,
+            expectedMtimeMs: String(doc.mtimeMs || 0),
+            cwd: cwd === undefined ? '' : cwd,
+          }).toString()
+        guarded(
+          fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'text/plain; charset=utf-8', 'x-remote-suite': '1' },
+            body: text,
+          })
+            .then((res) =>
+              res.json().then((parsed) => {
+                if (parsed !== null && parsed.ok === true) return parsed.value
+                const failure = new Error((parsed && parsed.error && parsed.error.message) || 'HTTP ' + res.status)
+                failure.code = (parsed && parsed.error && parsed.error.code) || 'internal'
+                throw failure
+              }),
+            )
+            .then((value) => {
+              setDirty(false)
+              setDoc(Object.assign({}, doc, { mtimeMs: value && value.mtimeMs ? value.mtimeMs : doc.mtimeMs }))
+              return value
+            }),
+        )
+      }
+
+      function change(method, payload) {
+        return guarded(
+          sidebarCall(method, Object.assign({}, payload, scope)).then((value) => {
+            if (payload && payload.path !== undefined && payload.path === (doc && doc.path)) setDoc(null)
+            return load(dir).then(() => value)
+          }),
+        )
+      }
+
+      function submitName() {
+        const wanted = name.trim()
+        if (naming === null || wanted === '') return
+        const done = () => {
+          setNaming(null)
+          setName('')
+        }
+        if (naming.kind === 'file') change('fs.createFile', { path: dir, name: wanted }).then(done, done)
+        else if (naming.kind === 'dir') change('fs.mkdir', { path: dir, name: wanted }).then(done, done)
+        else if (naming.kind === 'rename' && doc !== null)
+          change('fs.rename', { path: doc.path, name: wanted }).then(done, done)
+      }
+
+      function remove() {
+        if (doc === null) return
+        change('fs.remove', { path: doc.path }).then(() => {
+          setDoc(null)
+          setText('')
+          setDirty(false)
+        })
+      }
+
+      function search() {
+        const wanted = query.trim()
+        if (wanted === '') {
+          setHits(null)
+          return
+        }
+        guarded(
+          sidebarCall('fs.search', Object.assign({ query: wanted }, scope)).then((value) => {
+            setHits(value)
+            return value
+          }),
+        )
+      }
+
+      function openHit(relative) {
+        const absolute = relative.charAt(0) === '/' || /^[A-Za-z]:/.test(relative) ? relative : filesJoin(root, relative)
+        open(absolute)
+      }
+
+      const toolbar = h(
+        'div',
+        { className: 'rs-sf-bar' },
+        h(
+          'button',
+          {
+            className: 'rs-sf-btn',
+            title: '上一级',
+            onClick: () => {
+              setHits(null)
+              guarded(load(filesParent(dir)))
+            },
+          },
+          '↑',
+        ),
+        h('span', { className: 'rs-sf-crumbs', title: dir }, dir === '' ? '…' : dir),
+        h(
+          'button',
+          { className: 'rs-sf-btn', title: '刷新', onClick: () => guarded(load(dir)) },
+          '刷新',
+        ),
+        h(
+          'button',
+          {
+            className: 'rs-sf-btn',
+            onClick: () => {
+              setNaming({ kind: 'file' })
+              setName('')
+            },
+          },
+          '新建文件',
+        ),
+        h(
+          'button',
+          {
+            className: 'rs-sf-btn',
+            onClick: () => {
+              setNaming({ kind: 'dir' })
+              setName('')
+            },
+          },
+          '新建目录',
+        ),
+      )
+
+      const searchBar = h(
+        'div',
+        { className: 'rs-sf-bar' },
+        h('input', {
+          className: 'rs-sf-input',
+          placeholder: '搜索文件名与内容，回车开始',
+          value: query,
+          onChange: (event) => setQuery(event.target.value),
+          onKeyDown: (event) => {
+            if (event.key === 'Enter') search()
+            if (event.key === 'Escape') {
+              setQuery('')
+              setHits(null)
+            }
+          },
+        }),
+        h('button', { className: 'rs-sf-btn', onClick: search, disabled: busy }, '搜索'),
+      )
+
+      const nameBar =
+        naming === null
+          ? null
+          : h(
+              'div',
+              { className: 'rs-sf-bar' },
+              h('span', { className: 'rs-sf-crumbs' }, naming.kind === 'rename' ? '新名字' : '名称'),
+              h('input', {
+                className: 'rs-sf-input',
+                autoFocus: true,
+                value: name,
+                placeholder: naming.kind === 'dir' ? '新目录名' : '新文件名',
+                onChange: (event) => setName(event.target.value),
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter') submitName()
+                  if (event.key === 'Escape') setNaming(null)
+                },
+              }),
+              h('button', { className: 'rs-sf-btn', onClick: submitName }, '确定'),
+              h('button', { className: 'rs-sf-btn', onClick: () => setNaming(null) }, '取消'),
+            )
+
+      const body = (() => {
+        if (doc !== null) {
+          if (doc.kind === 'binary' || doc.kind === 'too-large') {
+            const isImage = /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(doc.path)
+            const url =
+              SIDEBAR_BASE +
+              '/file?' +
+              new URLSearchParams({ sessionId, path: doc.path, cwd: cwd === undefined ? '' : cwd }).toString()
+            return h(
+              'div',
+              { className: 'rs-sf-editor' },
+              h(
+                'div',
+                { className: 'rs-sf-bar' },
+                h('span', { className: 'rs-sf-crumbs', title: doc.path }, filesBaseName(doc.path)),
+                h('span', { className: 'rs-sf-meta' }, filesBytes(doc.size)),
+                doc.kind === 'too-large' ? h('span', { className: 'rs-sf-meta' }, '文件过大，仅预览') : null,
+                h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, '关闭'),
+              ),
+              isImage
+                ? h('div', { className: 'rs-sf-image' }, h('img', { src: url, alt: filesBaseName(doc.path) }))
+                : h('div', { className: 'rs-sf-empty' }, '二进制文件，无法以文本编辑'),
+            )
+          }
+          return h(
+            'div',
+            { className: 'rs-sf-editor' },
+            h(
+              'div',
+              { className: 'rs-sf-bar' },
+              h('span', { className: 'rs-sf-crumbs', title: doc.path }, filesBaseName(doc.path)),
+              h('span', { className: 'rs-sf-meta' }, dirty ? '已修改' : filesBytes(doc.size)),
+              h(
+                'button',
+                { className: 'rs-sf-btn', onClick: save, disabled: busy || dirty === false },
+                '保存',
+              ),
+              h(
+                'button',
+                {
+                  className: 'rs-sf-btn',
+                  onClick: () => {
+                    setNaming({ kind: 'rename' })
+                    setName(filesBaseName(doc.path))
+                  },
+                },
+                '改名',
+              ),
+              h('button', { className: 'rs-sf-btn', onClick: remove, disabled: busy }, '删除'),
+              h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, '关闭'),
+            ),
+            h('textarea', {
+              className: 'rs-sf-text',
+              spellCheck: false,
+              value: text,
+              onChange: (event) => {
+                setText(event.target.value)
+                setDirty(true)
+              },
+              onKeyDown: (event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+                  event.preventDefault()
+                  save()
+                }
+              },
+            }),
+          )
+        }
+        if (hits !== null) {
+          const list = (hits.matches || []).map((relative, index) =>
+            h(
+              'div',
+              { key: 'hit-' + index, className: 'rs-sf-row', onClick: () => openHit(relative) },
+              h('span', { className: 'rs-sf-icon' }, '·'),
+              h('span', { className: 'rs-sf-name', title: relative }, relative),
+            ),
+          )
+          return h(
+            'div',
+            { className: 'rs-sf-list' },
+            list.length === 0 ? h('div', { className: 'rs-sf-empty' }, '没有匹配的文件') : null,
+            list,
+            hits.truncated === true ? h('div', { className: 'rs-sf-empty' }, '结果已截断') : null,
+          )
+        }
+        if (rows.length === 0) {
+          return h(
+            'div',
+            { className: 'rs-sf-list' },
+            h('div', { className: 'rs-sf-empty' }, busy ? '加载中…' : '空目录'),
+          )
+        }
+        const list = rows.map((entry) =>
+          h(
+            'div',
+            {
+              key: entry.path,
+              className: 'rs-sf-row',
+              title: entry.path,
+              onClick: () => enter(entry),
+            },
+            h('span', { className: 'rs-sf-icon' }, entry.isDir === true ? '▸' : '·'),
+            h('span', { className: 'rs-sf-name' }, entry.name),
+            entry.isDir === true ? null : h('span', { className: 'rs-sf-meta' }, filesBytes(entry.size)),
+          ),
+        )
+        return h(
+          'div',
+          { className: 'rs-sf-list' },
+          list,
+          truncated === true ? h('div', { className: 'rs-sf-empty' }, '目录项过多，已截断') : null,
+        )
+      })()
+
+      return h(
+        'div',
+        { className: 'rs-sf' },
+        searchBar,
+        toolbar,
+        nameBar,
+        error === null ? null : h('div', { className: 'rs-sf-err' }, error),
+        body,
+      )
+    }
+
+    function registerFilesTab(ctx) {
+      try {
+        ctx.inject(['sidebarRightTabs'], (scoped) => {
+          const id = PANEL_ID + '/files'
+          scoped.effect(
+            () =>
+              scoped.sidebarRightTabs.register({
+                id,
+                kind: 'files',
+                priority: 'extension',
+                canOpen: () => true,
+                title: () => '文件',
+                guide: [
+                  {
+                    id: 'workspace-files',
+                    commandId: 'workspace.files',
+                    order: 10,
+                    title: () => '文件',
+                    description: () => '浏览并编辑工作区里的文件（本机、WSL、SSH、Docker）',
+                  },
+                ],
+              }),
+            'dsh-remote-suite: files tab type',
+          )
+          scoped.effect(
+            () =>
+              scoped.slots.inject('sidebar.right.pane.tab', () =>
+                scoped.slots.register(
+                  {
+                    name: 'sidebar.right.pane.tab',
+                    key: id,
+                    inject: (sessionId) => ({ sessionId }),
+                  },
+                  FilesPanel,
+                ),
+              ),
+            'dsh-remote-suite: files tab body',
+          )
+        })
+      } catch (error) {
+        console.error('dsh-remote-suite: this DSH has no sidebarRightTabs service', error)
+      }
+    }
+
     function registerSeats(ctx, stops) {
       try {
         stops.push(
@@ -3135,6 +3693,7 @@ window.__ModuleLoader__.load({
       ensureStyle()
       workspaceServices.workspaces = typeof ctx.get === 'function' ? ctx.get('workspaces') : null
       workspaceServices.uiWorkspace = typeof ctx.get === 'function' ? ctx.get('uiWorkspace') || null : null
+      workspaceServices.sessions = typeof ctx.get === 'function' ? ctx.get('sessions') || null : null
       layoutServices.layout =
         typeof ctx.get === 'function' ? ctx.get('layout') || null : null
       if (layoutServices.layout === null && ctx.layout !== undefined) layoutServices.layout = ctx.layout
@@ -3164,6 +3723,7 @@ window.__ModuleLoader__.load({
         }
       }
       registerSeats(ctx, stops)
+      registerFilesTab(ctx)
       return () => {
         for (const stop of stops) {
           if (typeof stop === 'function') stop()
