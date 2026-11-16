@@ -188,6 +188,12 @@ try {
   const preparedRemote = await remoteApi['prepare-path']({ target: 'ssh:box', path: '/srv/app' })
   assert.ok(path.isAbsolute(preparedRemote.dshPath))
   assert.ok((await fs.stat(preparedRemote.dshPath)).isDirectory())
+  // The mirror leaf is the workspace title the sidebar shows: the remote
+  // basename, with no `ws-` prefix.
+  assert.equal(path.basename(preparedRemote.dshPath), 'app')
+  // A path with no basename borrows the target kind instead of showing `~`.
+  const preparedRoot = await remoteApi['prepare-path']({ target: 'ssh:box', path: '~' })
+  assert.equal(path.basename(preparedRoot.dshPath), 'ssh')
   const preparedWsl = await wslApi['prepare-path']({ target: 'wsl:Ubuntu', path: '/home/me/project' })
   assert.equal(preparedWsl.dshPath, '\\\\wsl.localhost\\Ubuntu\\home\\me\\project')
   console.log('ok  prepare path (local / remote / WSL)')
@@ -203,6 +209,7 @@ try {
   assert.ok(path.isAbsolute(preparedStopped.dshPath))
   assert.ok(preparedStopped.dshPath.includes('mirrors'))
   assert.equal(preparedStopped.real, undefined)
+  assert.equal(path.basename(preparedStopped.dshPath), 'app')
   assert.ok((await fs.stat(preparedStopped.dshPath)).isDirectory())
   assert.equal(
     JSON.parse(await fs.readFile(path.join(preparedStopped.dshPath, '.dsh-docker.json'), 'utf8')).container,

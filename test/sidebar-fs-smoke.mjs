@@ -253,7 +253,7 @@ assert.equal(mirrorRootTree.path, mirrorDir)
 assert.deepEqual(mirrorRootTree.entries.map((entry) => entry.path), [`${mirrorDir}\\sub`, `${mirrorDir}\\r.txt`])
 const cwdInfo = await fs.methods['session.cwd']({ sessionId: 's-remote' })
 assert.equal(cwdInfo.cwd, mirrorDir)
-assert.equal(cwdInfo.root, 'ws-demo')
+assert.equal(cwdInfo.root, 'demo')
 assert.equal(typeof cwdInfo.parent, 'string')
 console.log('ok  mirror paths resolve to their remote files')
 
