@@ -52,8 +52,11 @@ assert.equal(typeof apiRoute.handler, 'function')
 const sidebarRoute = routes.find((route) => route.path === '/remote-suite/sidebar')
 assert.ok(sidebarRoute !== undefined, 'the sidebar file routes must be mounted')
 assert.equal(typeof sidebarRoute.handler, 'function')
-assert.equal(upgrades.length, 1, 'apply must register the PTY upgrade route')
-assert.equal(upgrades[0].path, '/remote-suite/pty')
+assert.equal(upgrades.length, 2, 'apply must register the PTY and the file-watch upgrade routes')
+assert.deepEqual(
+  upgrades.map((upgrade) => upgrade.path).sort(),
+  ['/remote-suite/pty', '/remote-suite/sidebar/ws/fs-watch'],
+)
 
 const tool = registered[0]
 assert.equal(tool.name, 'remote')

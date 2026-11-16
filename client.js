@@ -1194,6 +1194,58 @@ window.__ModuleLoader__.load({
         background: transparent; color: inherit; font-size: 12px; outline: none;
       }
       .rs-sf-input:focus { border-color: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 62%, transparent); }
+.rs-sf-row.is-sel { background: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 20%, transparent); }
+.rs-sf-status { padding: 4px 10px; border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
+.rs-sf-find {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+.rs-sf-find .rs-sf-input { flex: 1 1 auto; }
+.rs-sf-codewrap { flex: 1 1 auto; min-height: 0; }
+.rs-sf-codewrap .rs-code-ta, .rs-sf-codewrap .rs-code-hl { font-size: 12px; line-height: 1.55; }
+.rs-sf-drop {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed color-mix(in srgb, var(--dsh-accent, #4b8bf5) 55%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 10%, transparent);
+  font-size: 12px;
+  pointer-events: none;
+}
+.rs-sf { position: relative; }
+.rs-sf-menu {
+  position: fixed;
+  z-index: 1300;
+  min-width: 156px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--dsh-surface, #ffffff);
+  color: var(--dsh-text, #1f2328);
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+.rs-sf-menuitem {
+  text-align: left;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.rs-sf-menuitem:hover { background: var(--dsh-hover, rgba(127,127,127,0.13)); }
+.rs-sf-menuitem.is-danger { color: #e11d48; }
     `
 
     /**
@@ -3230,6 +3282,121 @@ window.__ModuleLoader__.load({
       return typeof error.message === 'string' && error.message !== '' ? error.message : String(error)
     }
 
+    // ---------------------------------------------------------------------
+    // Right sidebar: the workspace files panel.
+    //
+    // The wire format is better-sidebar's `/sidebar/api/*` one, served by this
+    // plugin under `/remote-suite/sidebar/*`. This side only ever talks to that
+    // own route, so the panel works for local, WSL, Docker and SSH workspaces
+    // with the same code, and it does not require better-sidebar to be installed.
+    // ---------------------------------------------------------------------
+
+    const SIDEBAR_WATCH = '/remote-suite/sidebar/ws/fs-watch'
+    const SF_IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i
+    const SF_AUDIO_RE = /\.(mp3|wav|ogg|m4a|flac)$/i
+    const SF_ARCHIVE_RE = /\.(zip|gz|tgz|tar|7z|rar|bz2|xz)$/i
+    const SF_CODE_RE = /\.(js|mjs|cjs|jsx|ts|tsx|json|css|scss|html|vue|py|rs|go|c|h|cc|cpp|hpp|java|kt|swift|rb|php|sh|ps1|bat|yml|yaml|toml|ini|cfg|sql|md|lua|dart|zig)$/i
+    const SF_ZIP_MAX_FILES = 200
+    const SF_ZIP_MAX_BYTES = 50 * 1024 * 1024
+
+    /** A glyph per entry, so a directory tree scans faster than a flat list. */
+    function filesIcon(entry) {
+      if (entry.isDir === true) return '▸'
+      if (SF_IMAGE_RE.test(entry.name)) return '▣'
+      if (SF_AUDIO_RE.test(entry.name)) return '♫'
+      if (SF_ARCHIVE_RE.test(entry.name)) return '▤'
+      if (SF_CODE_RE.test(entry.name)) return '⌘'
+      return '·'
+    }
+
+    let sfCrcTable = null
+
+    /** CRC-32, needed by the (uncompressed) zip we build for folder downloads. */
+    function sfCrc32(bytes) {
+      if (sfCrcTable === null) {
+        sfCrcTable = new Uint32Array(256)
+        for (let n = 0; n < 256; n += 1) {
+          let c = n
+          for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+          sfCrcTable[n] = c >>> 0
+        }
+      }
+      let crc = 0xffffffff
+      for (let index = 0; index < bytes.length; index += 1) {
+        crc = sfCrcTable[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8)
+      }
+      return (crc ^ 0xffffffff) >>> 0
+    }
+
+    /** Build a store-only zip in the browser; no library, no server round trip. */
+    function sfZip(entries) {
+      const encoder = new TextEncoder()
+      const chunks = []
+      const central = []
+      let offset = 0
+      const now = new Date()
+      const time = ((now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2)) & 0xffff
+      const date = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff
+      for (const entry of entries) {
+        const name = encoder.encode(entry.name)
+        const data = entry.data instanceof Uint8Array ? entry.data : new Uint8Array(entry.data)
+        const crc = sfCrc32(data)
+        const local = new Uint8Array(30 + name.length)
+        const view = new DataView(local.buffer)
+        view.setUint32(0, 0x04034b50, true)
+        view.setUint16(4, 20, true)
+        view.setUint16(6, 0x0800, true)
+        view.setUint16(8, 0, true)
+        view.setUint16(10, time, true)
+        view.setUint16(12, date, true)
+        view.setUint32(14, crc, true)
+        view.setUint32(18, data.length, true)
+        view.setUint32(22, data.length, true)
+        view.setUint16(26, name.length, true)
+        view.setUint16(28, 0, true)
+        local.set(name, 30)
+        chunks.push(local, data)
+        const header = new Uint8Array(46 + name.length)
+        const hview = new DataView(header.buffer)
+        hview.setUint32(0, 0x02014b50, true)
+        hview.setUint16(4, 20, true)
+        hview.setUint16(6, 20, true)
+        hview.setUint16(8, 0x0800, true)
+        hview.setUint16(10, 0, true)
+        hview.setUint16(12, time, true)
+        hview.setUint16(14, date, true)
+        hview.setUint32(16, crc, true)
+        hview.setUint32(20, data.length, true)
+        hview.setUint32(24, data.length, true)
+        hview.setUint16(28, name.length, true)
+        hview.setUint32(42, offset, true)
+        header.set(name, 46)
+        central.push(header)
+        offset += local.length + data.length
+      }
+      const centralSize = central.reduce((total, part) => total + part.length, 0)
+      const end = new Uint8Array(22)
+      const eview = new DataView(end.buffer)
+      eview.setUint32(0, 0x06054b50, true)
+      eview.setUint16(8, entries.length, true)
+      eview.setUint16(10, entries.length, true)
+      eview.setUint32(12, centralSize, true)
+      eview.setUint32(16, offset, true)
+      return new Blob([...chunks, ...central, end], { type: 'application/zip' })
+    }
+
+    function sfDownload(blob, name) {
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = name
+      anchor.rel = 'noopener'
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      setTimeout(() => URL.revokeObjectURL(url), 8000)
+    }
+
     function FilesPanel(props) {
       const sessionId = typeof props.sessionId === 'string' ? props.sessionId : ''
       const cwd = sessionCwdOf(sessionId)
@@ -3243,17 +3410,41 @@ window.__ModuleLoader__.load({
       const [doc, setDoc] = React.useState(null)
       const [text, setText] = React.useState('')
       const [dirty, setDirty] = React.useState(false)
+      const [page, setPage] = React.useState(null)
       const [naming, setNaming] = React.useState(null)
       const [name, setName] = React.useState('')
       const [query, setQuery] = React.useState('')
       const [hits, setHits] = React.useState(null)
+      const [selected, setSelected] = React.useState([])
+      const [menu, setMenu] = React.useState(null)
+      const [dropping, setDropping] = React.useState(false)
+      const [findOpen, setFindOpen] = React.useState(false)
+      const [findTerm, setFindTerm] = React.useState('')
+      const [findHit, setFindHit] = React.useState(0)
+      const dirRef = React.useRef('')
+      const busyRef = React.useRef(false)
+      const loadRef = React.useRef(null)
+      const taRef = React.useRef(null)
+      const hlRef = React.useRef(null)
+      const gutterRef = React.useRef(null)
+      const fileRef = React.useRef(null)
 
+      dirRef.current = dir
+      busyRef.current = busy
+
+      /**
+       * One level of the tree. `force` skips the host's 1.5 s listing cache so a
+       * watch push can never be answered with the stale listing it invalidated.
+       */
       const load = React.useCallback(
-        (path) =>
-          sidebarCall('fs.tree', path === undefined ? scope : Object.assign({ path }, scope)).then(
+        (path, force) =>
+          sidebarCall(
+            'fs.tree',
+            Object.assign({}, scope, path === undefined ? {} : { path }, force === true ? { fresh: true } : {}),
+          ).then(
             (value) => {
               setRoot((previous) => (previous === '' ? value.path : previous))
-              setDir(value.path)
+              if (path === undefined || path === value.path) setDir(value.path)
               setRows(value.entries || [])
               setTruncated(value.truncated === true)
               setError(null)
@@ -3266,14 +3457,85 @@ window.__ModuleLoader__.load({
           ),
         [scope],
       )
+      loadRef.current = load
 
       React.useEffect(() => {
-        if (sessionId === '' && cwd === undefined) return
+        if (sessionId === '' && cwd === undefined) return undefined
         setDoc(null)
         setHits(null)
         setDirty(false)
+        setSelected([])
         load(undefined)
+        // Follow a session whose cwd changes (a new workspace opens, a session
+        // switches target): re-root the tree instead of showing the old one.
+        const timer = setInterval(() => {
+          if (busyRef.current) return
+          loadRef.current(undefined, true)
+        }, 5000)
+        const onFocus = () => {
+          if (busyRef.current) return
+          loadRef.current(dirRef.current || undefined, true)
+        }
+        window.addEventListener('focus', onFocus)
+        return () => {
+          clearInterval(timer)
+          window.removeEventListener('focus', onFocus)
+        }
       }, [sessionId, cwd, load])
+
+      // Live refresh: one socket, watching the level in view plus the workspace
+      // root, so creating a file in a sibling directory still repaints the tree.
+      React.useEffect(() => {
+        if (sessionId === '' || typeof window.WebSocket !== 'function') return undefined
+        let closed = false
+        let socket = null
+        let timer = null
+        let tries = 0
+        const watched = [dir, root].filter((value, index, all) => value !== '' && all.indexOf(value) === index)
+        const connect = () => {
+          socket = new WebSocket(socketUrl(SIDEBAR_WATCH) + '?sessionId=' + encodeURIComponent(sessionId))
+          socket.onopen = () => {
+            tries = 0
+            for (const path of watched) socket.send(JSON.stringify({ op: 'watch', path }))
+          }
+          socket.onmessage = (event) => {
+            let frame
+            try {
+              frame = JSON.parse(event.data)
+            } catch {
+              return
+            }
+            if (frame === null || typeof frame !== 'object' || frame.ok === false) return
+            if (typeof frame.dir !== 'string') return
+            if (watched.indexOf(frame.dir) === -1) return
+            loadRef.current(frame.dir, true)
+          }
+          socket.onclose = () => {
+            if (closed) return
+            tries += 1
+            timer = setTimeout(connect, Math.min(1000 * Math.pow(2, tries - 1), 15000))
+          }
+          socket.onerror = () => {
+            try {
+              socket.close()
+            } catch {
+              // Already closed.
+            }
+          }
+        }
+        connect()
+        return () => {
+          closed = true
+          if (timer !== null) clearTimeout(timer)
+          if (socket !== null) {
+            try {
+              socket.close()
+            } catch {
+              // Already closed.
+            }
+          }
+        }
+      }, [sessionId, dir, root])
 
       function guarded(promise) {
         setBusy(true)
@@ -3294,6 +3556,7 @@ window.__ModuleLoader__.load({
         if (entry.isDir === true) {
           setHits(null)
           setDoc(null)
+          setMenu(null)
           guarded(load(entry.path))
           return
         }
@@ -3301,9 +3564,13 @@ window.__ModuleLoader__.load({
       }
 
       function open(path) {
+        setMenu(null)
         setDoc({ path, kind: 'text', size: 0, mtimeMs: 0 })
         setText('')
         setDirty(false)
+        setPage(null)
+        setFindOpen(false)
+        setFindTerm('')
         guarded(
           sidebarCall('fs.read', Object.assign({ path }, scope)).then(
             (value) => {
@@ -3317,6 +3584,20 @@ window.__ModuleLoader__.load({
               return null
             },
           ),
+        )
+      }
+
+      /** Append one 128 KiB page of a file that is too large for a full read. */
+      function loadPage() {
+        if (doc === null) return
+        const offset = page === null ? 0 : page.nextOffset
+        guarded(
+          sidebarCall('fs.readPage', Object.assign({ path: doc.path, offset }, scope)).then((value) => {
+            setText((previous) => (offset === 0 ? value.text : previous + value.text))
+            setPage({ nextOffset: value.nextOffset, eof: value.eof === true })
+            setDoc(Object.assign({}, doc, { kind: 'text', mtimeMs: value.mtimeMs, size: value.size }))
+            return value
+          }),
         )
       }
 
@@ -3357,7 +3638,7 @@ window.__ModuleLoader__.load({
         return guarded(
           sidebarCall(method, Object.assign({}, payload, scope)).then((value) => {
             if (payload && payload.path !== undefined && payload.path === (doc && doc.path)) setDoc(null)
-            return load(dir).then(() => value)
+            return load(dirRef.current, true).then(() => value)
           }),
         )
       }
@@ -3371,16 +3652,21 @@ window.__ModuleLoader__.load({
         }
         if (naming.kind === 'file') change('fs.createFile', { path: dir, name: wanted }).then(done, done)
         else if (naming.kind === 'dir') change('fs.mkdir', { path: dir, name: wanted }).then(done, done)
+        else if (naming.kind === 'rename' && naming.entry !== undefined)
+          change('fs.rename', { path: naming.entry.path, name: wanted }).then(done, done)
         else if (naming.kind === 'rename' && doc !== null)
           change('fs.rename', { path: doc.path, name: wanted }).then(done, done)
       }
 
-      function remove() {
-        if (doc === null) return
-        change('fs.remove', { path: doc.path }).then(() => {
+      function removePaths(paths) {
+        let chain = Promise.resolve()
+        for (const path of paths) chain = chain.then(() => guarded(sidebarCall('fs.remove', Object.assign({ path }, scope))))
+        return chain.then(() => {
+          setSelected([])
           setDoc(null)
           setText('')
           setDirty(false)
+          return load(dirRef.current, true)
         })
       }
 
@@ -3403,6 +3689,150 @@ window.__ModuleLoader__.load({
         open(absolute)
       }
 
+      function fileUrl(path) {
+        return SIDEBAR_BASE + '/file?' + sidebarQuery({ sessionId, path, cwd })
+      }
+
+      function downloadFile(path, suggested) {
+        const anchor = document.createElement('a')
+        anchor.href = fileUrl(path)
+        anchor.download = suggested || filesBaseName(path)
+        anchor.rel = 'noopener'
+        document.body.appendChild(anchor)
+        anchor.click()
+        document.body.removeChild(anchor)
+      }
+
+      /** Walk a directory over the same API, then hand the browser a .zip. */
+      function downloadFolder(entry) {
+        const queue = [{ path: entry.path, base: entry.name }]
+        const files = []
+        const walk = () => {
+          if (queue.length === 0 || files.length >= SF_ZIP_MAX_FILES) return Promise.resolve()
+          const item = queue.shift()
+          return sidebarCall('fs.tree', Object.assign({ path: item.path, fresh: true }, scope)).then((level) => {
+            for (const row of level.entries || []) {
+              if (row.isDir === true) queue.push({ path: row.path, base: item.base + '/' + row.name })
+              else files.push({ path: row.path, name: item.base + '/' + row.name })
+            }
+            return walk()
+          })
+        }
+        return guarded(
+          walk()
+            .then(async () => {
+              const parts = []
+              let total = 0
+              for (const file of files) {
+                if (total >= SF_ZIP_MAX_BYTES) break
+                const res = await fetch(fileUrl(file.path), { headers: { 'x-remote-suite': '1' }, credentials: 'same-origin' })
+                if (!res.ok) continue
+                const bytes = new Uint8Array(await res.arrayBuffer())
+                total += bytes.length
+                parts.push({ name: file.name, data: bytes })
+              }
+              if (parts.length === 0) throw new Error('这个目录里没有可以下载的文件')
+              sfDownload(sfZip(parts), entry.name + '.zip')
+              return parts.length
+            })
+            .catch((failure) => {
+              setError(filesErrorText(failure))
+              return null
+            }),
+        )
+      }
+
+      function uploadFiles(fileList) {
+        const files = Array.from(fileList || [])
+        if (files.length === 0) return
+        const target = dirRef.current
+        let chain = Promise.resolve()
+        for (const file of files) {
+          chain = chain.then(() =>
+            guarded(
+              fetch(
+                SIDEBAR_BASE +
+                  '/upload?' +
+                  sidebarQuery({ sessionId, cwd, dir: target, relativePath: file.name }),
+                { method: 'POST', headers: { 'x-remote-suite': '1' }, body: file },
+              ).then((res) =>
+                res.json().then((parsed) => {
+                  if (parsed !== null && parsed.ok === true) return parsed.value
+                  const failure = new Error((parsed && parsed.error && parsed.error.message) || 'HTTP ' + res.status)
+                  failure.code = (parsed && parsed.error && parsed.error.code) || 'internal'
+                  throw failure
+                }),
+              ),
+            ),
+          )
+        }
+        chain.then(() => load(target, true))
+      }
+
+      function selectRow(entry, event) {
+        const additive = event && (event.ctrlKey || event.metaKey)
+        const range = event && event.shiftKey
+        if (range && selected.length > 0) {
+          const from = rows.findIndex((row) => row.path === selected[selected.length - 1])
+          const to = rows.findIndex((row) => row.path === entry.path)
+          if (from !== -1 && to !== -1) {
+            const span = rows.slice(Math.min(from, to), Math.max(from, to) + 1).map((row) => row.path)
+            setSelected(span)
+            return
+          }
+        }
+        if (additive) {
+          setSelected((previous) =>
+            previous.indexOf(entry.path) === -1 ? previous.concat(entry.path) : previous.filter((path) => path !== entry.path),
+          )
+          return
+        }
+        setSelected([entry.path])
+      }
+
+      function openMenu(event, entry) {
+        event.preventDefault()
+        if (entry !== undefined && selected.indexOf(entry.path) === -1) setSelected([entry.path])
+        setMenu({ x: event.clientX, y: event.clientY, entry })
+      }
+
+      // --- editor plumbing -------------------------------------------------
+      const lineCount = React.useMemo(() => text.split('\n').length, [text])
+      const html = React.useMemo(() => highlight(text), [text])
+      const findMatches = React.useMemo(() => {
+        const term = findTerm.trim()
+        if (term === '' || text === '') return []
+        const found = []
+        const haystack = text.toLowerCase()
+        const needle = term.toLowerCase()
+        let at = haystack.indexOf(needle)
+        while (at !== -1 && found.length < 500) {
+          found.push(at)
+          at = haystack.indexOf(needle, at + Math.max(1, needle.length))
+        }
+        return found
+      }, [text, findTerm])
+
+      const syncScroll = () => {
+        const ta = taRef.current
+        if (ta === null) return
+        if (hlRef.current !== null) {
+          hlRef.current.scrollTop = ta.scrollTop
+          hlRef.current.scrollLeft = ta.scrollLeft
+        }
+        if (gutterRef.current !== null) gutterRef.current.scrollTop = ta.scrollTop
+      }
+
+      function jumpToFind(step) {
+        if (findMatches.length === 0 || taRef.current === null) return
+        const next = (findHit + step + findMatches.length) % findMatches.length
+        setFindHit(next)
+        const at = findMatches[next]
+        taRef.current.focus()
+        taRef.current.setSelectionRange(at, at + findTerm.trim().length)
+      }
+
+      // --- pieces ------------------------------------------------------------
       const toolbar = h(
         'div',
         { className: 'rs-sf-bar' },
@@ -3410,7 +3840,7 @@ window.__ModuleLoader__.load({
           'button',
           {
             className: 'rs-sf-btn',
-            title: dir === root ? '已经是工作区根目录' : '上一级',
+            title: '上一级',
             disabled: dir === '' || dir === root,
             onClick: () => {
               if (dir === '' || dir === root) return
@@ -3421,33 +3851,27 @@ window.__ModuleLoader__.load({
           '↑',
         ),
         h('span', { className: 'rs-sf-crumbs', title: dir }, dir === '' ? '…' : dir),
-        h(
-          'button',
-          { className: 'rs-sf-btn', title: '刷新', onClick: () => guarded(load(dir)) },
-          '刷新',
-        ),
-        h(
-          'button',
-          {
-            className: 'rs-sf-btn',
-            onClick: () => {
-              setNaming({ kind: 'file' })
-              setName('')
-            },
+        h('button', { className: 'rs-sf-btn', title: '刷新', onClick: () => guarded(load(dir, true)) }, '刷新'),
+        h('button', { className: 'rs-sf-btn', title: '上传文件', onClick: () => fileRef.current && fileRef.current.click() }, '上传'),
+        h('button', { className: 'rs-sf-btn', onClick: () => { setNaming({ kind: 'file' }); setName('') } }, '新建文件'),
+        h('button', { className: 'rs-sf-btn', onClick: () => { setNaming({ kind: 'dir' }); setName('') } }, '新建目录'),
+        selected.length > 0
+          ? h(
+              'button',
+              { className: 'rs-sf-btn', onClick: () => removePaths(selected), disabled: busy },
+              '删除选中（' + selected.length + '）',
+            )
+          : null,
+        h('input', {
+          ref: fileRef,
+          type: 'file',
+          multiple: true,
+          style: { display: 'none' },
+          onChange: (event) => {
+            uploadFiles(event.target.files)
+            event.target.value = ''
           },
-          '新建文件',
-        ),
-        h(
-          'button',
-          {
-            className: 'rs-sf-btn',
-            onClick: () => {
-              setNaming({ kind: 'dir' })
-              setName('')
-            },
-          },
-          '新建目录',
-        ),
+        }),
       )
 
       const searchBar = h(
@@ -3491,14 +3915,38 @@ window.__ModuleLoader__.load({
               h('button', { className: 'rs-sf-btn', onClick: () => setNaming(null) }, '取消'),
             )
 
+      const findBar = findOpen
+        ? h(
+            'div',
+            { className: 'rs-sf-find' },
+            h('input', {
+              className: 'rs-sf-input',
+              autoFocus: true,
+              placeholder: '查找，回车跳到下一个',
+              value: findTerm,
+              onChange: (event) => {
+                setFindTerm(event.target.value)
+                setFindHit(0)
+              },
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') jumpToFind(event.shiftKey ? -1 : 1)
+                if (event.key === 'Escape') setFindOpen(false)
+              },
+            }),
+            h('span', { className: 'rs-sf-meta' }, findMatches.length === 0 ? '无匹配' : `${findHit + 1}/${findMatches.length}`),
+            h('button', { className: 'rs-sf-btn', onClick: () => jumpToFind(-1) }, '上一个'),
+            h('button', { className: 'rs-sf-btn', onClick: () => jumpToFind(1) }, '下一个'),
+            h('button', { className: 'rs-sf-btn', onClick: () => setFindOpen(false) }, '×'),
+          )
+        : null
+
       const body = (() => {
         if (doc !== null) {
-          if (doc.kind === 'binary' || doc.kind === 'too-large') {
-            const isImage = /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(doc.path)
-            const url =
-              SIDEBAR_BASE +
-              '/file?' +
-              sidebarQuery({ sessionId, path: doc.path, cwd })
+          const isText = doc.kind === 'text'
+          if (!isText) {
+            const isImage = SF_IMAGE_RE.test(doc.path)
+            const isAudio = SF_AUDIO_RE.test(doc.path)
+            const url = fileUrl(doc.path)
             return h(
               'div',
               { className: 'rs-sf-editor' },
@@ -3507,14 +3955,25 @@ window.__ModuleLoader__.load({
                 { className: 'rs-sf-bar' },
                 h('span', { className: 'rs-sf-crumbs', title: doc.path }, filesBaseName(doc.path)),
                 h('span', { className: 'rs-sf-meta' }, filesBytes(doc.size)),
-                doc.kind === 'too-large' ? h('span', { className: 'rs-sf-meta' }, '文件过大，仅预览') : null,
+                h('button', { className: 'rs-sf-btn', onClick: () => downloadFile(doc.path) }, '下载'),
+                doc.kind === 'too-large'
+                  ? h('button', { className: 'rs-sf-btn', onClick: loadPage }, '分页查看')
+                  : null,
                 h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, '关闭'),
               ),
               isImage
                 ? h('div', { className: 'rs-sf-image' }, h('img', { src: url, alt: filesBaseName(doc.path) }))
-                : h('div', { className: 'rs-sf-empty' }, '二进制文件，无法以文本编辑'),
+                : isAudio
+                  ? h('div', { className: 'rs-sf-image' }, h('audio', { src: url, controls: true }))
+                  : h(
+                      'div',
+                      { className: 'rs-sf-empty' },
+                      doc.kind === 'too-large' ? '文件过大。点「分页查看」逐页读取，或直接下载。' : '二进制文件，无法以文本编辑',
+                    ),
             )
           }
+          const gutter = []
+          for (let n = 1; n <= lineCount; n += 1) gutter.push(n)
           return h(
             'div',
             { className: 'rs-sf-editor' },
@@ -3523,11 +3982,9 @@ window.__ModuleLoader__.load({
               { className: 'rs-sf-bar' },
               h('span', { className: 'rs-sf-crumbs', title: doc.path }, filesBaseName(doc.path)),
               h('span', { className: 'rs-sf-meta' }, dirty ? '已修改' : filesBytes(doc.size)),
-              h(
-                'button',
-                { className: 'rs-sf-btn', onClick: save, disabled: busy || dirty === false },
-                '保存',
-              ),
+              h('button', { className: 'rs-sf-btn', onClick: save, disabled: busy || dirty === false }, '保存'),
+              h('button', { className: 'rs-sf-btn', onClick: () => downloadFile(doc.path) }, '下载'),
+              h('button', { className: 'rs-sf-btn', onClick: () => setFindOpen((previous) => !previous) }, '查找'),
               h(
                 'button',
                 {
@@ -3539,24 +3996,70 @@ window.__ModuleLoader__.load({
                 },
                 '改名',
               ),
-              h('button', { className: 'rs-sf-btn', onClick: remove, disabled: busy }, '删除'),
+              h('button', { className: 'rs-sf-btn', onClick: () => removePaths([doc.path]), disabled: busy }, '删除'),
               h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, '关闭'),
+              page !== null && page.eof !== true
+                ? h('button', { className: 'rs-sf-btn', onClick: loadPage }, '加载更多')
+                : null,
             ),
-            h('textarea', {
-              className: 'rs-sf-text',
-              spellCheck: false,
-              value: text,
-              onChange: (event) => {
-                setText(event.target.value)
-                setDirty(true)
-              },
-              onKeyDown: (event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-                  event.preventDefault()
-                  save()
-                }
-              },
-            }),
+            findBar,
+            h(
+              'div',
+              { className: 'rs-code-wrap rs-sf-codewrap' },
+              h('div', { className: 'rs-gutter', ref: gutterRef }, gutter.join('\n')),
+              h(
+                'div',
+                { className: 'rs-code-scroll' },
+                h('pre', {
+                  className: 'rs-code-hl',
+                  ref: hlRef,
+                  'aria-hidden': true,
+                  dangerouslySetInnerHTML: { __html: html + '\n' },
+                }),
+                h('textarea', {
+                  className: 'rs-code-ta',
+                  ref: taRef,
+                  value: text,
+                  spellCheck: false,
+                  wrap: 'off',
+                  onChange: (event) => {
+                    setText(event.target.value)
+                    setDirty(true)
+                  },
+                  onScroll: syncScroll,
+                  onKeyDown: (event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+                      event.preventDefault()
+                      save()
+                    }
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+                      event.preventDefault()
+                      setFindOpen(true)
+                    }
+                    if (event.key === 'Tab') {
+                      event.preventDefault()
+                      const ta = event.target
+                      const start = ta.selectionStart
+                      const end = ta.selectionEnd
+                      const next = text.slice(0, start) + '  ' + text.slice(end)
+                      setText(next)
+                      setDirty(true)
+                      requestAnimationFrame(() => {
+                        if (taRef.current !== null) {
+                          taRef.current.selectionStart = start + 2
+                          taRef.current.selectionEnd = start + 2
+                        }
+                      })
+                    }
+                  },
+                }),
+              ),
+            ),
+            h(
+              'div',
+              { className: 'rs-sf-meta rs-sf-status' },
+              `${lineCount} 行 · ${text.length} 字符 · ${dirty ? '未保存' : '已保存'}`,
+            ),
           )
         }
         if (hits !== null) {
@@ -3577,22 +4080,26 @@ window.__ModuleLoader__.load({
           )
         }
         if (rows.length === 0) {
-          return h(
-            'div',
-            { className: 'rs-sf-list' },
-            h('div', { className: 'rs-sf-empty' }, busy ? '加载中…' : '空目录'),
-          )
+          return h('div', { className: 'rs-sf-list' }, h('div', { className: 'rs-sf-empty' }, busy ? '加载中…' : '空目录'))
         }
         const list = rows.map((entry) =>
           h(
             'div',
             {
               key: entry.path,
-              className: 'rs-sf-row',
+              className: 'rs-sf-row' + (selected.indexOf(entry.path) === -1 ? '' : ' is-sel'),
               title: entry.path,
-              onClick: () => enter(entry),
+              onClick: (event) => {
+                if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                  selectRow(entry, event)
+                  return
+                }
+                setSelected([entry.path])
+                enter(entry)
+              },
+              onContextMenu: (event) => openMenu(event, entry),
             },
-            h('span', { className: 'rs-sf-icon' }, entry.isDir === true ? '▸' : '·'),
+            h('span', { className: 'rs-sf-icon' }, filesIcon(entry)),
             h('span', { className: 'rs-sf-name' }, entry.name),
             entry.isDir === true ? null : h('span', { className: 'rs-sf-meta' }, filesBytes(entry.size)),
           ),
@@ -3605,14 +4112,110 @@ window.__ModuleLoader__.load({
         )
       })()
 
+      const menuNode =
+        menu === null
+          ? null
+          : h(
+              'div',
+              {
+                className: 'rs-sf-menu',
+                style: { left: Math.max(8, menu.x - 140), top: menu.y },
+                onMouseLeave: () => setMenu(null),
+              },
+              menu.entry === undefined
+                ? null
+                : [
+                    h('button', { key: 'open', className: 'rs-sf-menuitem', onClick: () => enter(menu.entry) }, menu.entry.isDir ? '打开目录' : '打开'),
+                    h(
+                      'button',
+                      {
+                        key: 'rename',
+                        className: 'rs-sf-menuitem',
+                        onClick: () => {
+                          setNaming({ kind: 'rename', entry: menu.entry })
+                          setName(menu.entry.name)
+                          setMenu(null)
+                        },
+                      },
+                      '重命名',
+                    ),
+                    h(
+                      'button',
+                      {
+                        key: 'download',
+                        className: 'rs-sf-menuitem',
+                        onClick: () => {
+                          if (menu.entry.isDir === true) downloadFolder(menu.entry)
+                          else downloadFile(menu.entry.path, menu.entry.name)
+                          setMenu(null)
+                        },
+                      },
+                      menu.entry.isDir === true ? '下载为 zip' : '下载',
+                    ),
+                    h(
+                      'button',
+                      {
+                        key: 'copy',
+                        className: 'rs-sf-menuitem',
+                        onClick: () => {
+                          if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(menu.entry.path).catch(() => {})
+                          }
+                          setMenu(null)
+                        },
+                      },
+                      '复制路径',
+                    ),
+                    h(
+                      'button',
+                      {
+                        key: 'remove',
+                        className: 'rs-sf-menuitem is-danger',
+                        onClick: () => {
+                          const paths = selected.indexOf(menu.entry.path) === -1 ? [menu.entry.path] : selected
+                          removePaths(paths)
+                          setMenu(null)
+                        },
+                      },
+                      '删除',
+                    ),
+                  ],
+            )
+
       return h(
         'div',
-        { className: 'rs-sf' },
+        {
+          className: 'rs-sf' + (dropping ? ' is-drop' : ''),
+          onDragOver: (event) => {
+            if (event.dataTransfer && Array.from(event.dataTransfer.types || []).indexOf('Files') !== -1) {
+              event.preventDefault()
+              setDropping(true)
+            }
+          },
+          onDragLeave: () => setDropping(false),
+          onDrop: (event) => {
+            if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+              event.preventDefault()
+              uploadFiles(event.dataTransfer.files)
+            }
+            setDropping(false)
+          },
+          onKeyDown: (event) => {
+            if (event.key === 'Escape') {
+              setMenu(null)
+              setFindOpen(false)
+            }
+            if (event.key === 'Delete' && selected.length > 0 && doc === null) removePaths(selected)
+          },
+          tabIndex: -1,
+        },
         searchBar,
         toolbar,
         nameBar,
         error === null ? null : h('div', { className: 'rs-sf-err' }, error),
         body,
+        dropping ? h('div', { className: 'rs-sf-drop' }, '松开即可上传到当前目录') : null,
+        menuNode,
       )
     }
 

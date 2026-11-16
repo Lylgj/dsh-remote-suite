@@ -257,5 +257,55 @@ await assert.rejects(fs.methods['fs.read']({ sessionId: 's-remote', path: '/etc/
   return true
 })
 
+// --- exclude patterns -------------------------------------------------------
+const withoutSub = await fs.methods['fs.tree']({ sessionId: 's-remote', exclude: ['sub'] })
+assert.deepEqual(withoutSub.entries.map((entry) => entry.name), ['r.txt'])
+const withoutText = await fs.methods['fs.tree']({ sessionId: 's-remote', exclude: ['*.txt'] })
+assert.deepEqual(withoutText.entries.map((entry) => entry.name), ['sub'])
+
+// --- upload ---------------------------------------------------------------
+const uploadBytes = Buffer.from([0x00, 0x01, 0xfe, 0xff])
+const localUpload = await fs.upload({
+  sessionId: 's-local',
+  dir: localRoot,
+  relativePath: 'nested/deep/up.bin',
+  data: uploadBytes,
+})
+assert.equal(localUpload.path, join(localRoot, 'nested', 'deep', 'up.bin'))
+assert.deepEqual(await readFile(localUpload.path), uploadBytes)
+
+const remoteUpload = await fs.upload({
+  sessionId: 's-remote',
+  dir: REMOTE_ROOT,
+  relativePath: 'up.txt',
+  data: Buffer.from('uploaded\n', 'utf8'),
+})
+assert.equal(remoteUpload.path, `${REMOTE_ROOT}/up.txt`)
+assert.equal(await readFile(join(remoteRoot, 'up.txt'), 'utf8'), 'uploaded\n')
+
+// The upload directory itself must not be escapable.
+for (const relativePath of ['../escape.txt', '/absolute.txt', 'a/../../escape.txt']) {
+  await assert.rejects(
+    fs.upload({ sessionId: 's-local', dir: localRoot, relativePath, data: Buffer.from('x') }),
+    (error) => {
+      assert.equal(error.code, 'bad-request')
+      return true
+    },
+  )
+}
+
+// --- listing cache + invalidation -----------------------------------------
+await fs.methods['fs.tree']({ sessionId: 's-local' })
+const cachedCreate = await fs.methods['fs.createFile']({ sessionId: 's-local', path: localRoot, name: 'cache-probe.txt' })
+assert.equal(cachedCreate.path, join(localRoot, 'cache-probe.txt'))
+const afterCreate = await fs.methods['fs.tree']({ sessionId: 's-local' })
+assert.ok(afterCreate.entries.some((entry) => entry.name === 'cache-probe.txt'), 'a mutation must invalidate the listing cache')
+
+// --- watch digest ---------------------------------------------------------
+const digestBefore = await fs.digest({ sessionId: 's-local', path: localRoot })
+await writeFile(join(localRoot, 'digest-probe.txt'), 'x', 'utf8')
+const digestAfter = await fs.digest({ sessionId: 's-local', path: localRoot })
+assert.notEqual(digestBefore.digest, digestAfter.digest, 'a new entry must move the digest')
+
 await rm(root, { recursive: true, force: true })
 console.log('sidebar-fs smoke: ok')

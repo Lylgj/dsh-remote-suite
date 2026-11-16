@@ -23,6 +23,7 @@ import { createApi } from './lib/api.js'
 import { serveAsset } from './lib/assets.js'
 import { createRegistry } from './lib/backends/index.js'
 import { explain } from './lib/errors.js'
+import { createFsWatch } from './lib/fs-watch.js'
 import { createPtyServer } from './lib/pty-server.js'
 import { createPtySpawner } from './lib/pty.js'
 import { createSidebarFs, statusOf, wireError } from './lib/sidebar-fs.js'
@@ -47,15 +48,36 @@ const PTY_PATH = '/remote-suite/pty'
  * mount point is ours, so both plugins can be installed without shadowing.
  */
 const SIDEBAR_BASE = '/remote-suite/sidebar'
+const SIDEBAR_WATCH_PATH = '/remote-suite/sidebar/ws/fs-watch'
 
 /** Largest request body the API accepts (a full editor buffer). */
 const MAX_BODY_BYTES = 8 * 1024 * 1024
+const MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 
 /** Only this plugin's own client calls the API; a custom header cannot be sent cross-site. */
 const CLIENT_HEADER = 'x-remote-suite'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ASSET_ROOT = join(HERE, 'assets')
+
+function readBodyBuffer(req, limit = MAX_BODY_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let size = 0
+    req.on('data', (chunk) => {
+      const buf = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk
+      size += buf.length
+      if (size > limit) {
+        reject(new Error('request body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(buf)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks)))
+    req.on('error', reject)
+  })
+}
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -221,6 +243,8 @@ export function apply(ctx, config = {}) {
           sessionId: url.searchParams.get('sessionId') ?? undefined,
           cwd: url.searchParams.get('cwd') ?? undefined,
           path: url.searchParams.get('path') ?? undefined,
+          dir: url.searchParams.get('dir') ?? undefined,
+          relativePath: url.searchParams.get('relativePath') ?? undefined,
           expectedMtimeMs: (() => {
             const raw = url.searchParams.get('expectedMtimeMs')
             const parsed = raw === null ? Number.NaN : Number(raw)
@@ -245,6 +269,23 @@ export function apply(ctx, config = {}) {
             const written = await sidebarFs.writeText({ ...query, content })
             sidebarFs.invalidate()
             sendJson(res, 200, { ok: true, value: { ok: true, mtimeMs: written.mtimeMs } })
+            return
+          }
+          if (rest === '/upload') {
+            if (req.method !== 'POST') {
+              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+              return
+            }
+            const data = await readBodyBuffer(req, MAX_UPLOAD_BYTES)
+            const value = await sidebarFs.upload({
+              sessionId: query.sessionId,
+              cwd: query.cwd,
+              dir: query.dir,
+              relativePath: query.relativePath,
+              data,
+            })
+            sidebarFs.invalidate(query.dir)
+            sendJson(res, 200, { ok: true, value })
             return
           }
           if (rest === '/file') {
@@ -331,6 +372,26 @@ export function apply(ctx, config = {}) {
               return
             }
             pty.upgrade(req, socket, head)
+          },
+        }),
+      )
+      // The watch socket: same origin fence as the PTY, then our polling watcher.
+      const watch = createFsWatch({ sidebarFs, WebSocketServer: loadWebSocketServer() })
+      disposers.push(() => watch.dispose())
+      disposers.push(
+        scoped.webServer.registerUpgrade({
+          path: SIDEBAR_WATCH_PATH,
+          handler: (req, socket, head) => {
+            if (!sameOrigin(req)) {
+              try {
+                socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+              } catch {
+                // Socket already closed.
+              }
+              socket.destroy()
+              return
+            }
+            watch.upgrade(req, socket, head)
           },
         }),
       )
