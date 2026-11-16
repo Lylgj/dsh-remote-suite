@@ -26,7 +26,7 @@ import { explain } from './lib/errors.js'
 import { installFsBridge } from './lib/fs-bridge.js'
 import { createPtyServer } from './lib/pty-server.js'
 import { createPtySpawner } from './lib/pty.js'
-import { loadState } from './lib/state.js'
+import { loadState, dataDir } from './lib/state.js'
 import { createRemoteTool } from './lib/tool-remote.js'
 
 export const name = 'remote-suite'
@@ -174,14 +174,24 @@ export function apply(ctx, config = {}) {
   // shows real remote files; everything else is delegated untouched.
   const offFs = ctx.inject(['fs'], (scoped) => {
     try {
+      const note = (line) => {
+        const home = process.env.DSH_HOME || join(homedir(), '.dsh')
+        const file = join(home, 'remote-suite', 'debug.log')
+        mkdir(dirname(file), { recursive: true })
+          .then(() => appendFile(file, `${new Date().toISOString()} fs ${line}\n`))
+          .catch(() => {})
+      }
       disposers.push(
         installFsBridge({
           fs: scoped.fs,
           registry,
           workspaces: async () => (await loadState()).workspaces,
+          mirrorsDir: join(dataDir(), 'mirrors'),
           log: (message, error) => console.error(message, error),
+          note,
         }),
       )
+      note('bridge installed')
     } catch (error) {
       console.error('remote-suite: installing the filesystem bridge failed', error)
     }

@@ -76,8 +76,12 @@ function stubBackend(root) {
 const work = await mkdtemp(join(tmpdir(), 'rs-fsbridge-'))
 const root = join(work, 'remote')
 const mirror = join(work, 'mirror')
+const mirrors = join(work, 'mirrors')
+const marked = join(mirrors, 'ssh-test-deadbeef', 'ws-marked')
 await mkdir(join(root, 'sub'), { recursive: true })
 await mkdir(mirror, { recursive: true })
+await mkdir(marked, { recursive: true })
+await writeFile(join(marked, '.dsh-remote.json'), JSON.stringify({ targetId: 'ssh:test', path: '/srv/proj' }))
 await writeFile(join(root, 'a.txt'), 'hello\nworld\n')
 await writeFile(join(root, 'sub', 'b.txt'), 'nested\n')
 await writeFile(join(root, 'bin.dat'), Buffer.from([0, 1, 2, 3]))
@@ -130,6 +134,7 @@ const dispose = installFsBridge({
   fs: host,
   registry: { backend: async (id) => (assert.equal(id, 'ssh:test'), stubBackend(root)) },
   workspaces: async () => [{ id: 'ws-a', targetId: 'ssh:test', path: '/srv/proj', localPath: mirror }],
+  mirrorsDir: mirrors,
 })
 
 try {
@@ -179,6 +184,11 @@ try {
     await host.stat({ targetKey: 'rss:ssh%3Atest:/srv/proj/gone.txt', displayPath: join(mirror, 'gone.txt') }),
     undefined,
   )
+
+  // A mirror directory that only carries its marker (no state.json record) maps too.
+  const markedFile = await host.resolve(join(marked, 'sub', 'b.txt'))
+  assert.ok(markedFile.targetKey.startsWith('rss:ssh%3Atest:/srv/proj/sub/b.txt'), `marked key ${markedFile.targetKey}`)
+  assert.equal((await host.stat(markedFile)).type, 'file')
 
   // Containment is decided on the remote side of the pair.
   const subTarget = await host.resolve(join(mirror, 'sub', 'b.txt'))
