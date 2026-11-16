@@ -69,19 +69,42 @@ assert.equal(typeof module.apply, 'function')
 assert.equal(module.inject.join(','), 'slots,workspaces')
 
 const seats = new Map()
+const tabTypes = []
+const slots = {
+  inject(_name, callback) {
+    return callback()
+  },
+  register(descriptor, component) {
+    seats.set(`${descriptor.name}:${descriptor.id ?? descriptor.key ?? ''}`, component)
+    return () => seats.delete(`${descriptor.name}:${descriptor.id ?? descriptor.key ?? ''}`)
+  },
+}
+// The right sidebar's tab-type registry: the plugin declares a type and a body
+// for it. This stand-in records the declaration so the smoke test can prove the
+// contract shape (id, kind, priority, guide entry, body seat) without the host.
+const sidebarRightTabs = {
+  register(definition) {
+    tabTypes.push(definition)
+    return () => {}
+  },
+}
+const inner = {
+  get: () => undefined,
+  slots,
+  sidebarRightTabs,
+  effect(fn) {
+    return fn()
+  },
+}
 const ctx = {
   get(name) {
     if (name === 'workspaces') return { create: async () => ({ workspaceId: 'w1' }) }
     return undefined
   },
-  slots: {
-    inject(_name, callback) {
-      return callback()
-    },
-    register(descriptor, component) {
-      seats.set(`${descriptor.name}:${descriptor.id ?? descriptor.key ?? ''}`, component)
-      return () => seats.delete(`${descriptor.name}:${descriptor.id ?? descriptor.key ?? ''}`)
-    },
+  slots,
+  inject(names, callback) {
+    if (names.includes('sidebarRightTabs')) return callback(inner)
+    return undefined
   },
 }
 module.apply(ctx)
@@ -139,6 +162,25 @@ for (const seat of ['conversation.hero.workspace.directoryFlow:', 'sidebar.works
   assert.match(open, /远程 SSH/)
 }
 console.log('ok  add-workspace flow mounts')
+
+// The host's own file tab reads the host filesystem. An SSH or Docker workspace
+// only has an empty mirror directory there, so the plugin declares a tab type of
+// its own: an *extension* beside the built-in one (never a takeover of it), whose
+// body is the workbench tree — every read goes through the remote API instead.
+assert.equal(tabTypes.length, 1, 'exactly one sidebar tab type is registered')
+const filesType = tabTypes[0]
+assert.equal(filesType.id, 'remote-suite/files')
+assert.equal(filesType.kind, 'remote-files')
+assert.equal(filesType.priority, 'extension', 'the type sits beside the built-in file tab, it does not replace it')
+assert.equal(typeof filesType.title, 'function')
+assert.equal(filesType.title(), '远程文件')
+assert.ok(Array.isArray(filesType.guide) && filesType.guide.length === 1, 'the guide lists exactly one entry')
+assert.equal(filesType.guide[0].title(), '远程文件')
+assert.equal(typeof filesType.guide[0].description, 'function')
+const filesBody = seats.get('sidebar.right.pane.tab:remote-suite/files')
+assert.equal(typeof filesBody, 'function', 'the tab body mounts in the sidebar.right.pane.tab seat')
+assert.equal(typeof renderToString(React.createElement(filesBody, {})), 'string', 'the body renders')
+console.log('ok  sidebar file tab type')
 
 // File operations must survive a host that predates the mkdir/rename/remove API:
 // each one falls back to the equivalent shell command over `exec`. This is a

@@ -21,6 +21,10 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
   Docker / SSH 工作区也能用这块工作台：它的
   `tree` / `read` / `write` / `mkdir` / `rename` / `remove` 全部经 API 直接在远端执行（Docker 走
   `docker exec`），不做本地镜像。SSH 工作区在 DSH 里打开的是空镜像目录，看远端真文件就用这块工作台。
+- **右侧栏「远程文件」页签**：官方右侧栏的文件页签读的是宿主机文件系统，而 SSH 工作区在本地只是一个
+  空镜像目录，所以那边打不开远端文件。本插件通过官方页签扩展点（`sidebar.right.pane.tab`，id
+  `remote-suite/files`）注册了自己的页签类型，把工作台的远端文件树搬进右侧栏：右侧栏「＋」→「远程文件」，
+  即可浏览、查看、编辑远端文件；本机工作区仍走官方内建面板。
 - **一个工具管全部**：`remote` 有 22 个 action——执行命令、读 / 写 / 改文件、`mkdir` / `rename` /
   `remove`、`grep`、`glob`、列目录、保存工作区、镜像同步——目标从 WSL 换成 Docker 或 SSH，参数写法不变。
 - **远程 SSH**：主机直接读 `~/.ssh/config`，也能在对话框里新增；别名可以用中文；密钥、ssh-agent、
