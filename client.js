@@ -4246,6 +4246,20 @@ window.__ModuleLoader__.load({
       try {
         ctx.inject(['sidebarRightTabs'], (scoped) => {
           const id = PANEL_ID + '/files'
+          // The host lets at most one `files` takeover live: two `extension`
+          // bands for the same kind make the second registration throw
+          // ("tab kind ... is already registered"). better-sidebar registers
+          // the same kind, so bow out instead of breaking the whole plugin
+          // when it is already in force.
+          const taken = typeof scoped.sidebarRightTabs.get === 'function'
+            ? scoped.sidebarRightTabs.get('files')
+            : undefined
+          if (taken !== undefined && taken.id !== id) {
+            console.warn(
+              '[dsh-remote-suite] 右侧栏 files 页签已被 ' + String(taken.id || '另一个插件') + ' 占用，跳过注册',
+            )
+            return
+          }
           scoped.effect(
             () =>
               scoped.sidebarRightTabs.register({

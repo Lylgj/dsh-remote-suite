@@ -71,7 +71,7 @@
     "manifestVersion": 1
   },
   "scripts": {
-    "test": "node test/smoke.mjs && node test/api-smoke.mjs && node test/client-smoke.mjs && node test/tool-smoke.mjs && node test/pty-smoke.mjs && node test/docker-smoke.mjs && node test/secrets-smoke.mjs && node test/mirror-smoke.mjs && node test/sidebar-fs-smoke.mjs && node test/errors-smoke.mjs",
+    "test": "node test/smoke.mjs && node test/api-smoke.mjs && node test/client-smoke.mjs && node test/sidebar-takeover-smoke.mjs && node test/tool-smoke.mjs && node test/pty-smoke.mjs && node test/docker-smoke.mjs && node test/secrets-smoke.mjs && node test/mirror-smoke.mjs && node test/sidebar-fs-smoke.mjs && node test/errors-smoke.mjs",
     "test:ssh": "node test/ssh-smoke.mjs",
     "test:jump": "node test/ssh-jump-smoke.mjs",
     "test:daemon": "node test/daemon-smoke.mjs",
