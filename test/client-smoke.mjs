@@ -136,6 +136,9 @@ assert.equal(tabTypes[0].kind, 'files', 'the tab must replace the host pane, not
 assert.equal(tabTypes[0].priority, 'extension', 'an extension-level claim beats the builtin pane')
 assert.equal(tabTypes[0].canOpen('dsh-resource://file/absolute/C:/work'), true)
 assert.equal(tabTypes[0].title(), '文件')
+assert.equal(tabTypes[0].guide[0].description(), '浏览工作区文件树，点开即预览或编辑')
+assert.equal(typeof tabTypes[0].guide[0].icon, 'function')
+assert.equal(tabTypes[0].guide[0].icon({ size: 16 }).props.width, 16)
 assert.equal(tabTypes[0].guide.length, 1)
 assert.equal(tabTypes[0].guide[0].commandId, 'workspace.files')
 assert.ok(

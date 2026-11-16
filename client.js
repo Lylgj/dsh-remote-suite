@@ -4219,6 +4219,23 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // The native guide row renders `entry.icon` and hands it `{ size }`; without
+    // one our takeover is the only row in the list with a blank leading slot.
+    function filesGuideIcon(props) {
+      const size = (props && typeof props.size === 'number' && props.size > 0) ? props.size : 16
+      const FileTypeIcon = primitives.FileTypeIcon
+      if (typeof FileTypeIcon === 'function') return h(FileTypeIcon, { kind: 'folder', size })
+      return h(
+        'svg',
+        { width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': 'true', fill: 'none' },
+        h('path', {
+          d: 'M1.75 3.5h4.1l1.3 1.5h7.1v7.5H1.75V3.5Z',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+          strokeLinejoin: 'round',
+        }),
+      )
+    }
     function registerFilesTab(ctx) {
       try {
         ctx.inject(['sidebarRightTabs'], (scoped) => {
@@ -4237,7 +4254,8 @@ window.__ModuleLoader__.load({
                     commandId: 'workspace.files',
                     order: 10,
                     title: () => '文件',
-                    description: () => '浏览并编辑工作区里的文件（本机、WSL、SSH、Docker）',
+                    description: () => '浏览工作区文件树，点开即预览或编辑',
+                    icon: filesGuideIcon,
                   },
                 ],
               }),
