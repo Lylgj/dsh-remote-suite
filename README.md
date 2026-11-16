@@ -29,6 +29,7 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
   `fs.mkdir` / `fs.createFile` / `fs.remove`，外加 `/write`、`/file`、`/upload`、`ws/fs-watch`），
   同时挂在本插件自己的 `/remote-suite/sidebar` 和它的 `/sidebar/api/*` 下：
   **装了 dsh-better-sidebar 就用它的面板、数据来自本插件；没装就用本插件自带的面板**。
+  面板文案跟随 DSH 界面语言，中文界面用中文、英文界面用英文。
 - **一个工具管全部**：`remote` 有 22 个 action——执行命令、读 / 写 / 改文件、`mkdir` / `rename` /
   `remove`、`grep`、`glob`、列目录、保存工作区、镜像同步——目标从 WSL 换成 Docker 或 SSH，参数写法不变。
 - **远程 SSH**：主机直接读 `~/.ssh/config`，也能在对话框里新增；别名可以用中文；密钥、ssh-agent、

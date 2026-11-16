@@ -70,9 +70,15 @@ assert.equal(module.inject.join(','), 'slots,workspaces')
 
 const seats = new Map()
 const tabTypes = []
+// The files pane follows the DSH interface language; tests start in Chinese and
+// switch to English at the end to prove both copies render.
+const localeState = { active: 'zh-CN' }
 const ctx = {
   get(name) {
     if (name === 'workspaces') return { create: async () => ({ workspaceId: 'w1' }) }
+    if (name === 'locale') {
+      return { getSnapshot: () => ({ active: localeState.active }), subscribe: () => () => {} }
+    }
     return undefined
   },
   inject(deps, callback) {
@@ -209,4 +215,25 @@ assert.match(source, /move \/Y \$\{cmdQuote\(fromPath\)\}/, 'windows rename fall
 assert.match(source, /rmdir \/s \/q \$\{cmdQuote\(path\)\}/, 'windows remove fallback')
 assert.match(source, /replace\(\/'\/g, "'\\\\''"\)/, 'posix quoting escapes apostrophes')
 console.log('ok  file operations fall back to exec on an older host')
+
+// The pane is a takeover of the Host's own file pane, so it speaks the Host
+// language: Chinese when the interface is Chinese, English otherwise. The copy
+// table is keyed by the Chinese literal, so a missing entry degrades to the
+// original text instead of a bare key.
+localeState.active = 'en-US'
+module.apply(ctx)
+await new Promise((resolve) => setTimeout(resolve, 400))
+const englishTab = tabTypes[tabTypes.length - 1]
+assert.equal(englishTab.title(), 'Files', 'the tab title follows the interface language')
+assert.equal(
+  englishTab.guide[0].description(),
+  'Browse the workspace files; open one to preview or edit it.',
+  'the guide line follows the interface language',
+)
+const englishPane = renderToString(
+  React.createElement(seats.get('sidebar.right.pane.tab:remote-suite/files'), { sessionId: 's1' }),
+)
+assert.ok(englishPane.includes('Refresh'), 'the English copy reaches the rendered pane')
+assert.ok(!englishPane.includes('刷新'), 'no Chinese action labels leak into the English pane')
+console.log('ok  files pane follows the interface language')
 console.log('client smoke ok')

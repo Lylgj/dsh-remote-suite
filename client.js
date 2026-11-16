@@ -3398,6 +3398,7 @@ window.__ModuleLoader__.load({
     }
 
     function FilesPanel(props) {
+      useLocale()
       const sessionId = typeof props.sessionId === 'string' ? props.sessionId : ''
       const cwd = sessionCwdOf(sessionId)
       const scope = React.useMemo(() => ({ sessionId, cwd }), [sessionId, cwd])
@@ -3731,7 +3732,7 @@ window.__ModuleLoader__.load({
                 total += bytes.length
                 parts.push({ name: file.name, data: bytes })
               }
-              if (parts.length === 0) throw new Error('这个目录里没有可以下载的文件')
+              if (parts.length === 0) throw new Error(tr('这个目录里没有可以下载的文件'))
               sfDownload(sfZip(parts), entry.name + '.zip')
               return parts.length
             })
@@ -3840,7 +3841,7 @@ window.__ModuleLoader__.load({
           'button',
           {
             className: 'rs-sf-btn',
-            title: '上一级',
+            title: tr('上一级'),
             disabled: dir === '' || dir === root,
             onClick: () => {
               if (dir === '' || dir === root) return
@@ -3851,15 +3852,15 @@ window.__ModuleLoader__.load({
           '↑',
         ),
         h('span', { className: 'rs-sf-crumbs', title: dir }, dir === '' ? '…' : dir),
-        h('button', { className: 'rs-sf-btn', title: '刷新', onClick: () => guarded(load(dir, true)) }, '刷新'),
-        h('button', { className: 'rs-sf-btn', title: '上传文件', onClick: () => fileRef.current && fileRef.current.click() }, '上传'),
-        h('button', { className: 'rs-sf-btn', onClick: () => { setNaming({ kind: 'file' }); setName('') } }, '新建文件'),
-        h('button', { className: 'rs-sf-btn', onClick: () => { setNaming({ kind: 'dir' }); setName('') } }, '新建目录'),
+        h('button', { className: 'rs-sf-btn', title: tr('刷新'), onClick: () => guarded(load(dir, true)) }, tr('刷新')),
+        h('button', { className: 'rs-sf-btn', title: tr('上传文件'), onClick: () => fileRef.current && fileRef.current.click() }, tr('上传')),
+        h('button', { className: 'rs-sf-btn', onClick: () => { setNaming({ kind: 'file' }); setName('') } }, tr('新建文件')),
+        h('button', { className: 'rs-sf-btn', onClick: () => { setNaming({ kind: 'dir' }); setName('') } }, tr('新建目录')),
         selected.length > 0
           ? h(
               'button',
               { className: 'rs-sf-btn', onClick: () => removePaths(selected), disabled: busy },
-              '删除选中（' + selected.length + '）',
+              tr('删除选中') + ' ' + selected.length,
             )
           : null,
         h('input', {
@@ -3879,7 +3880,7 @@ window.__ModuleLoader__.load({
         { className: 'rs-sf-bar' },
         h('input', {
           className: 'rs-sf-input',
-          placeholder: '搜索文件名与内容，回车开始',
+          placeholder: tr('搜索文件名与内容，回车开始'),
           value: query,
           onChange: (event) => setQuery(event.target.value),
           onKeyDown: (event) => {
@@ -3890,7 +3891,7 @@ window.__ModuleLoader__.load({
             }
           },
         }),
-        h('button', { className: 'rs-sf-btn', onClick: search, disabled: busy }, '搜索'),
+        h('button', { className: 'rs-sf-btn', onClick: search, disabled: busy }, tr('搜索')),
       )
 
       const nameBar =
@@ -3899,20 +3900,20 @@ window.__ModuleLoader__.load({
           : h(
               'div',
               { className: 'rs-sf-bar' },
-              h('span', { className: 'rs-sf-crumbs' }, naming.kind === 'rename' ? '新名字' : '名称'),
+              h('span', { className: 'rs-sf-crumbs' }, naming.kind === 'rename' ? tr('新名字') : tr('名称')),
               h('input', {
                 className: 'rs-sf-input',
                 autoFocus: true,
                 value: name,
-                placeholder: naming.kind === 'dir' ? '新目录名' : '新文件名',
+                placeholder: naming.kind === 'dir' ? tr('新目录名') : tr('新文件名'),
                 onChange: (event) => setName(event.target.value),
                 onKeyDown: (event) => {
                   if (event.key === 'Enter') submitName()
                   if (event.key === 'Escape') setNaming(null)
                 },
               }),
-              h('button', { className: 'rs-sf-btn', onClick: submitName }, '确定'),
-              h('button', { className: 'rs-sf-btn', onClick: () => setNaming(null) }, '取消'),
+              h('button', { className: 'rs-sf-btn', onClick: submitName }, tr('确定')),
+              h('button', { className: 'rs-sf-btn', onClick: () => setNaming(null) }, tr('取消')),
             )
 
       const findBar = findOpen
@@ -3922,7 +3923,7 @@ window.__ModuleLoader__.load({
             h('input', {
               className: 'rs-sf-input',
               autoFocus: true,
-              placeholder: '查找，回车跳到下一个',
+              placeholder: tr('查找，回车跳到下一个'),
               value: findTerm,
               onChange: (event) => {
                 setFindTerm(event.target.value)
@@ -3933,9 +3934,9 @@ window.__ModuleLoader__.load({
                 if (event.key === 'Escape') setFindOpen(false)
               },
             }),
-            h('span', { className: 'rs-sf-meta' }, findMatches.length === 0 ? '无匹配' : `${findHit + 1}/${findMatches.length}`),
-            h('button', { className: 'rs-sf-btn', onClick: () => jumpToFind(-1) }, '上一个'),
-            h('button', { className: 'rs-sf-btn', onClick: () => jumpToFind(1) }, '下一个'),
+            h('span', { className: 'rs-sf-meta' }, findMatches.length === 0 ? tr('无匹配') : `${findHit + 1}/${findMatches.length}`),
+            h('button', { className: 'rs-sf-btn', onClick: () => jumpToFind(-1) }, tr('上一个')),
+            h('button', { className: 'rs-sf-btn', onClick: () => jumpToFind(1) }, tr('下一个')),
             h('button', { className: 'rs-sf-btn', onClick: () => setFindOpen(false) }, '×'),
           )
         : null
@@ -3955,11 +3956,11 @@ window.__ModuleLoader__.load({
                 { className: 'rs-sf-bar' },
                 h('span', { className: 'rs-sf-crumbs', title: doc.path }, filesBaseName(doc.path)),
                 h('span', { className: 'rs-sf-meta' }, filesBytes(doc.size)),
-                h('button', { className: 'rs-sf-btn', onClick: () => downloadFile(doc.path) }, '下载'),
+                h('button', { className: 'rs-sf-btn', onClick: () => downloadFile(doc.path) }, tr('下载')),
                 doc.kind === 'too-large'
-                  ? h('button', { className: 'rs-sf-btn', onClick: loadPage }, '分页查看')
+                  ? h('button', { className: 'rs-sf-btn', onClick: loadPage }, tr('分页查看'))
                   : null,
-                h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, '关闭'),
+                h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, tr('关闭')),
               ),
               isImage
                 ? h('div', { className: 'rs-sf-image' }, h('img', { src: url, alt: filesBaseName(doc.path) }))
@@ -3968,7 +3969,7 @@ window.__ModuleLoader__.load({
                   : h(
                       'div',
                       { className: 'rs-sf-empty' },
-                      doc.kind === 'too-large' ? '文件过大。点「分页查看」逐页读取，或直接下载。' : '二进制文件，无法以文本编辑',
+                      doc.kind === 'too-large' ? tr('文件过大。点「分页查看」逐页读取，或直接下载。') : tr('二进制文件，无法以文本编辑'),
                     ),
             )
           }
@@ -3981,10 +3982,10 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'rs-sf-bar' },
               h('span', { className: 'rs-sf-crumbs', title: doc.path }, filesBaseName(doc.path)),
-              h('span', { className: 'rs-sf-meta' }, dirty ? '已修改' : filesBytes(doc.size)),
-              h('button', { className: 'rs-sf-btn', onClick: save, disabled: busy || dirty === false }, '保存'),
-              h('button', { className: 'rs-sf-btn', onClick: () => downloadFile(doc.path) }, '下载'),
-              h('button', { className: 'rs-sf-btn', onClick: () => setFindOpen((previous) => !previous) }, '查找'),
+              h('span', { className: 'rs-sf-meta' }, dirty ? tr('已修改') : filesBytes(doc.size)),
+              h('button', { className: 'rs-sf-btn', onClick: save, disabled: busy || dirty === false }, tr('保存')),
+              h('button', { className: 'rs-sf-btn', onClick: () => downloadFile(doc.path) }, tr('下载')),
+              h('button', { className: 'rs-sf-btn', onClick: () => setFindOpen((previous) => !previous) }, tr('查找')),
               h(
                 'button',
                 {
@@ -3994,12 +3995,12 @@ window.__ModuleLoader__.load({
                     setName(filesBaseName(doc.path))
                   },
                 },
-                '改名',
+                tr('改名'),
               ),
-              h('button', { className: 'rs-sf-btn', onClick: () => removePaths([doc.path]), disabled: busy }, '删除'),
-              h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, '关闭'),
+              h('button', { className: 'rs-sf-btn', onClick: () => removePaths([doc.path]), disabled: busy }, tr('删除')),
+              h('button', { className: 'rs-sf-btn', onClick: () => setDoc(null) }, tr('关闭')),
               page !== null && page.eof !== true
-                ? h('button', { className: 'rs-sf-btn', onClick: loadPage }, '加载更多')
+                ? h('button', { className: 'rs-sf-btn', onClick: loadPage }, tr('加载更多'))
                 : null,
             ),
             findBar,
@@ -4058,7 +4059,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'rs-sf-meta rs-sf-status' },
-              `${lineCount} 行 · ${text.length} 字符 · ${dirty ? '未保存' : '已保存'}`,
+              statusLine(lineCount, text.length, dirty),
             ),
           )
         }
@@ -4074,13 +4075,13 @@ window.__ModuleLoader__.load({
           return h(
             'div',
             { className: 'rs-sf-list' },
-            list.length === 0 ? h('div', { className: 'rs-sf-empty' }, '没有匹配的文件') : null,
+            list.length === 0 ? h('div', { className: 'rs-sf-empty' }, tr('没有匹配的文件')) : null,
             list,
-            hits.truncated === true ? h('div', { className: 'rs-sf-empty' }, '结果已截断') : null,
+            hits.truncated === true ? h('div', { className: 'rs-sf-empty' }, tr('结果已截断')) : null,
           )
         }
         if (rows.length === 0) {
-          return h('div', { className: 'rs-sf-list' }, h('div', { className: 'rs-sf-empty' }, busy ? '加载中…' : '空目录'))
+          return h('div', { className: 'rs-sf-list' }, h('div', { className: 'rs-sf-empty' }, busy ? tr('加载中…') : tr('空目录')))
         }
         const list = rows.map((entry) =>
           h(
@@ -4108,7 +4109,7 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'rs-sf-list' },
           list,
-          truncated === true ? h('div', { className: 'rs-sf-empty' }, '目录项过多，已截断') : null,
+          truncated === true ? h('div', { className: 'rs-sf-empty' }, tr('目录项过多，已截断')) : null,
         )
       })()
 
@@ -4125,7 +4126,7 @@ window.__ModuleLoader__.load({
               menu.entry === undefined
                 ? null
                 : [
-                    h('button', { key: 'open', className: 'rs-sf-menuitem', onClick: () => enter(menu.entry) }, menu.entry.isDir ? '打开目录' : '打开'),
+                    h('button', { key: 'open', className: 'rs-sf-menuitem', onClick: () => enter(menu.entry) }, menu.entry.isDir ? tr('打开目录') : tr('打开')),
                     h(
                       'button',
                       {
@@ -4137,7 +4138,7 @@ window.__ModuleLoader__.load({
                           setMenu(null)
                         },
                       },
-                      '重命名',
+                      tr('重命名'),
                     ),
                     h(
                       'button',
@@ -4150,7 +4151,7 @@ window.__ModuleLoader__.load({
                           setMenu(null)
                         },
                       },
-                      menu.entry.isDir === true ? '下载为 zip' : '下载',
+                      menu.entry.isDir === true ? tr('下载为 zip') : tr('下载'),
                     ),
                     h(
                       'button',
@@ -4164,7 +4165,7 @@ window.__ModuleLoader__.load({
                           setMenu(null)
                         },
                       },
-                      '复制路径',
+                      tr('复制路径'),
                     ),
                     h(
                       'button',
@@ -4177,7 +4178,7 @@ window.__ModuleLoader__.load({
                           setMenu(null)
                         },
                       },
-                      '删除',
+                      tr('删除'),
                     ),
                   ],
             )
@@ -4214,7 +4215,7 @@ window.__ModuleLoader__.load({
         nameBar,
         error === null ? null : h('div', { className: 'rs-sf-err' }, error),
         body,
-        dropping ? h('div', { className: 'rs-sf-drop' }, '松开即可上传到当前目录') : null,
+        dropping ? h('div', { className: 'rs-sf-drop' }, tr('松开即可上传到当前目录')) : null,
         menuNode,
       )
     }
@@ -4258,6 +4259,122 @@ window.__ModuleLoader__.load({
       }
     }
 
+
+    /**
+     * Copy for the files panel and its sidebar entry.
+     *
+     * The panel takes over the Host's own file pane, so it speaks the same two
+     * languages dsh-better-sidebar does: Chinese when the DSH locale is Chinese,
+     * English otherwise (browser language when no locale service is attached,
+     * e.g. in tests). Entries are keyed by the Chinese literal, so a missing
+     * translation falls back to the original text instead of a bare key.
+     */
+    const EN_COPY = {
+      "文件": "Files",
+      "保存": "Save",
+      "查找": "Find",
+      "查找，回车跳到下一个": "Find; Enter jumps to the next match",
+      "打开": "Open",
+      "打开目录": "Open folder",
+      "二进制文件，无法以文本编辑": "Binary file, cannot edit as text",
+      "分页查看": "Page view",
+      "复制路径": "Copy path",
+      "改名": "Rename",
+      "关闭": "Close",
+      "加载更多": "Load more",
+      "加载中…": "Loading...",
+      "结果已截断": "Results truncated",
+      "空目录": "Empty folder",
+      "没有匹配的文件": "No matching files",
+      "名称": "Name",
+      "目录项过多，已截断": "Too many entries, truncated",
+      "取消": "Cancel",
+      "确定": "OK",
+      "删除": "Delete",
+      "上传": "Upload",
+      "上传文件": "Upload files",
+      "上一个": "Previous",
+      "上一级": "Up",
+      "刷新": "Refresh",
+      "松开即可上传到当前目录": "Drop to upload into this folder",
+      "搜索": "Search",
+      "搜索文件名与内容，回车开始": "Search names and contents, Enter to start",
+      "文件过大。点「分页查看」逐页读取，或直接下载。": "The file is large. Use \"Page view\" to read it page by page, or download it.",
+      "无匹配": "No matches",
+      "下一个": "Next",
+      "下载": "Download",
+      "下载为 zip": "Download as .zip",
+      "新建目录": "New folder",
+      "新建文件": "New file",
+      "新名字": "New name",
+      "新目录名": "New folder name",
+      "新文件名": "New file name",
+      "已保存": "Saved",
+      "已修改": "Unsaved",
+      "这个目录里没有可以下载的文件": "This folder has nothing to download",
+      "重命名": "Rename",
+      "浏览工作区文件树，点开即预览或编辑": "Browse the workspace files; open one to preview or edit it."
+    }
+
+    /** The DSH locale service, attached by attachLocale() from apply(). */
+    let localeService
+
+    function attachLocale(service) {
+      localeService = service === null || service === undefined ? undefined : service
+    }
+
+    /** The active locale id: the Host's preference first, then the browser's. */
+    function activeLocale() {
+      try {
+        const active = localeService?.getSnapshot?.().active
+        if (typeof active === 'string' && active !== '') return active
+      } catch {
+        // No service, or one that cannot answer: fall through.
+      }
+      const language = typeof navigator !== 'undefined' && navigator !== null ? navigator.language : ''
+      return typeof language === 'string' ? language : ''
+    }
+
+    /** Whether the interface is Chinese (the same rule better-sidebar uses). */
+    function isZh() {
+      return activeLocale().toLowerCase().startsWith('zh')
+    }
+
+    /** Translate panel copy; {name} placeholders are interpolated when given. */
+    function tr(text, params) {
+      let out = isZh() ? text : EN_COPY[text] ?? text
+      if (params !== undefined) {
+        for (const [name, value] of Object.entries(params)) out = out.replaceAll('{' + name + '}', String(value))
+      }
+      return out
+    }
+
+    /** The editor status line, in the active language. */
+    function statusLine(lines, chars, dirty) {
+      return isZh()
+        ? lines + ' 行 · ' + chars + ' 字符 · ' + (dirty ? '未保存' : '已保存')
+        : lines + ' lines · ' + chars + ' chars · ' + (dirty ? 'Unsaved' : 'Saved')
+    }
+
+    /** A value that changes with the locale, for useSyncExternalStore. */
+    function localeKey() {
+      return activeLocale()
+    }
+
+    function subscribeLocale(onChange) {
+      try {
+        if (typeof localeService?.subscribe === 'function') return localeService.subscribe(onChange)
+      } catch {
+        // Without the service the language cannot change at runtime.
+      }
+      return () => {}
+    }
+
+    /** Re-render the caller when the interface language switches. */
+    function useLocale() {
+      return React.useSyncExternalStore(subscribeLocale, localeKey, localeKey)
+    }
+
     function registerFilesTab(ctx) {
       try {
         ctx.inject(['sidebarRightTabs'], (scoped) => {
@@ -4294,13 +4411,13 @@ window.__ModuleLoader__.load({
                     kind: 'files',
                     keepMounted: true,
                     priority: 'extension',
-                    title: () => '文件',
+                    title: () => tr('文件'),
                     guide: [
                       {
                         id: 'files',
                         order: 10,
-                        title: () => '文件',
-                        description: () => '浏览工作区文件树，点开即预览或编辑',
+                        title: () => tr('文件'),
+                        description: () => tr('浏览工作区文件树，点开即预览或编辑'),
                         icon: filesGuideIcon,
                       },
                     ],
@@ -4381,6 +4498,9 @@ window.__ModuleLoader__.load({
       workspaceServices.workspaces = typeof ctx.get === 'function' ? ctx.get('workspaces') : null
       workspaceServices.uiWorkspace = typeof ctx.get === 'function' ? ctx.get('uiWorkspace') || null : null
       workspaceServices.sessions = typeof ctx.get === 'function' ? ctx.get('sessions') || null : null
+      // The files panel follows the DSH interface language, like the pane it
+      // takes over: Chinese when the Host locale is Chinese, English otherwise.
+      attachLocale(typeof ctx.get === 'function' ? ctx.get('locale') : ctx.locale)
       layoutServices.layout =
         typeof ctx.get === 'function' ? ctx.get('layout') || null : null
       if (layoutServices.layout === null && ctx.layout !== undefined) layoutServices.layout = ctx.layout
