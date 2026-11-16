@@ -4245,13 +4245,12 @@ window.__ModuleLoader__.load({
               scoped.sidebarRightTabs.register({
                 id,
                 kind: 'files',
+                keepMounted: true,
                 priority: 'extension',
-                canOpen: () => true,
                 title: () => '文件',
                 guide: [
                   {
-                    id: 'workspace-files',
-                    commandId: 'workspace.files',
+                    id: 'files',
                     order: 10,
                     title: () => '文件',
                     description: () => '浏览工作区文件树，点开即预览或编辑',
