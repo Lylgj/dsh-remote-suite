@@ -69,10 +69,31 @@ assert.equal(typeof module.apply, 'function')
 assert.equal(module.inject.join(','), 'slots,workspaces')
 
 const seats = new Map()
+const tabTypes = []
+const sidebarRightTabs = {
+  register(definition) {
+    tabTypes.push(definition)
+    return () => {}
+  },
+  candidates: () => [],
+}
 const ctx = {
   get(name) {
     if (name === 'workspaces') return { create: async () => ({ workspaceId: 'w1' }) }
     return undefined
+  },
+  inject(names, callback) {
+    if (names.includes('sidebarRightTabs')) {
+      callback({
+        get: ctx.get,
+        slots: ctx.slots,
+        sidebarRightTabs,
+        effect: (run) => run(),
+      })
+    } else {
+      callback({})
+    }
+    return () => {}
   },
   slots: {
     inject(_name, callback) {
@@ -159,4 +180,24 @@ assert.match(source, /move \/Y \$\{cmdQuote\(fromPath\)\}/, 'windows rename fall
 assert.match(source, /rmdir \/s \/q \$\{cmdQuote\(path\)\}/, 'windows remove fallback')
 assert.match(source, /replace\(\/'\/g, "'\\\\''"\)/, 'posix quoting escapes apostrophes')
 console.log('ok  file operations fall back to exec on an older host')
+
+// The sidebar's own "workspace files" tab is taken over at the extension band,
+// so the panel works for SSH and Docker workspaces, whose local mirror is empty.
+assert.equal(tabTypes.length, 1, 'exactly one tab type is registered')
+const filesTab = tabTypes[0]
+assert.equal(filesTab.id, 'remote-suite/files')
+assert.equal(filesTab.kind, 'files', 'the panel takes over the built-in files kind')
+assert.equal(filesTab.priority, 'extension', 'an extension outranks the builtin type')
+assert.equal(typeof filesTab.canOpen, 'function')
+assert.equal(filesTab.canOpen('dsh-resource://file/session/s1/notes.txt'), true)
+assert.equal(typeof filesTab.title(), 'string')
+assert.ok(Array.isArray(filesTab.guide) && filesTab.guide.length === 1)
+const filesBody = seats.get('sidebar.right.pane.tab:remote-suite/files')
+assert.ok(filesBody, 'the tab needs a body component')
+assert.match(
+  renderToString(React.createElement(filesBody, { sessionId: 's1' })),
+  /还没有工作区/,
+  'without a session cwd the panel explains itself instead of throwing',
+)
+console.log('ok  sidebar files tab takes over the builtin type')
 console.log('client smoke ok')
