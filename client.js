@@ -4224,7 +4224,13 @@ window.__ModuleLoader__.load({
     function filesGuideIcon(props) {
       const size = (props && typeof props.size === 'number' && props.size > 0) ? props.size : 16
       const FileTypeIcon = primitives.FileTypeIcon
-      if (typeof FileTypeIcon === 'function') return h(FileTypeIcon, { kind: 'folder', size })
+      // better-sidebar wraps the glyph in `span.files`, whose rule is
+      // `color: var(--dsw-alias-brand-primary, var(--dsw-alias-label-primary))`.
+      // We cannot import its CSS module, so apply the same token inline.
+      const brand = { color: 'var(--dsw-alias-brand-primary, var(--dsw-alias-label-primary))' }
+      if (typeof FileTypeIcon === 'function') {
+        return h('span', { style: brand }, h(FileTypeIcon, { kind: 'folder', size }))
+      }
       return h(
         'svg',
         { width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': 'true', fill: 'none' },
