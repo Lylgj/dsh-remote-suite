@@ -216,6 +216,18 @@ assert.match(source, /rmdir \/s \/q \$\{cmdQuote\(path\)\}/, 'windows remove fal
 assert.match(source, /replace\(\/'\/g, "'\\\\''"\)/, 'posix quoting escapes apostrophes')
 console.log('ok  file operations fall back to exec on an older host')
 
+// Navigation must survive the live-refresh machinery: a `{dir, ok:true}` frame is
+// the answer to a `watch` request (repainting on it bounces the reader back to the
+// root), and the periodic refresh must re-list the level in view, not re-root.
+assert.match(source, /if \(frame\.ok !== undefined\) return/, 'watch acks must not repaint the tree')
+assert.match(source, /if \(frame\.dir !== dirRef\.current\) return/, 'only the level in view is repainted')
+assert.match(
+  source,
+  /loadRef\.current\(dirRef\.current \|\| undefined, true\)/,
+  'the periodic refresh keeps the directory in view',
+)
+console.log('ok  live refresh keeps the directory in view')
+
 // The pane is a takeover of the Host's own file pane, so it speaks the Host
 // language: Chinese when the interface is Chinese, English otherwise. The copy
 // table is keyed by the Chinese literal, so a missing entry degrades to the

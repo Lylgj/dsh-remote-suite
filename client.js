@@ -3469,9 +3469,12 @@ window.__ModuleLoader__.load({
         load(undefined)
         // Follow a session whose cwd changes (a new workspace opens, a session
         // switches target): re-root the tree instead of showing the old one.
+        // The refresh below keeps the level in view: re-rooting every few
+        // seconds would drag the reader back out of whatever directory they
+        // opened.
         const timer = setInterval(() => {
           if (busyRef.current) return
-          loadRef.current(undefined, true)
+          loadRef.current(dirRef.current || undefined, true)
         }, 5000)
         const onFocus = () => {
           if (busyRef.current) return
@@ -3507,8 +3510,14 @@ window.__ModuleLoader__.load({
               return
             }
             if (frame === null || typeof frame !== 'object' || frame.ok === false) return
+            // `{dir, ok:true}` is the answer to a `watch` request, not a change
+            // notification; repainting on it would bounce the reader back to the
+            // directory the ack was for.
+            if (frame.ok !== undefined) return
             if (typeof frame.dir !== 'string') return
-            if (watched.indexOf(frame.dir) === -1) return
+            // Only the level in view is repainted: a change reported for the
+            // workspace root (we watch it for sibling edits) must not navigate.
+            if (frame.dir !== dirRef.current) return
             loadRef.current(frame.dir, true)
           }
           socket.onclose = () => {
