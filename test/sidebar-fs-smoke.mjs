@@ -238,6 +238,18 @@ const remoteText = await fs.methods['fs.read']({ sessionId: 's-remote', path: `$
 assert.equal(remoteText.kind, 'text')
 assert.equal(remoteText.content, 'remote needle\n')
 
+// better-sidebar labels the tab with the mirror directory and builds child
+// paths from it, so a Windows path inside the mirror must resolve to the
+// remote file it mirrors instead of being appended to the remote root.
+const mirrorRead = await fs.methods['fs.read']({ sessionId: 's-remote', path: `${mirrorDir}\\r.txt` })
+assert.equal(mirrorRead.kind, 'text')
+assert.equal(mirrorRead.content, 'remote needle\n')
+const mirrorTree = await fs.methods['fs.tree']({ sessionId: 's-remote', path: `${mirrorDir}\\sub` })
+assert.equal(mirrorTree.path, `${REMOTE_ROOT}/sub`)
+const mirrorRootTree = await fs.methods['fs.tree']({ sessionId: 's-remote', path: mirrorDir })
+assert.equal(mirrorRootTree.path, REMOTE_ROOT)
+console.log('ok  mirror paths resolve to their remote files')
+
 const remotePage = await fs.methods['fs.readPage']({ sessionId: 's-remote', path: `${REMOTE_ROOT}/r.txt` })
 assert.equal(remotePage.text, 'remote needle\n')
 
