@@ -23,6 +23,7 @@ import { createApi } from './lib/api.js'
 import { serveAsset } from './lib/assets.js'
 import { createRegistry } from './lib/backends/index.js'
 import { explain } from './lib/errors.js'
+import { installFsBridge } from './lib/fs-bridge.js'
 import { createPtyServer } from './lib/pty-server.js'
 import { createPtySpawner } from './lib/pty.js'
 import { loadState } from './lib/state.js'
@@ -167,6 +168,25 @@ export function apply(ctx, config = {}) {
     return dispose
   }
 
+  // DSH's own file panel reads through `ctx.fs`, and an SSH workspace is only an
+  // empty mirror directory there. The bridge answers every call inside one of
+  // those mirror directories from the remote backend, so the built-in panel
+  // shows real remote files; everything else is delegated untouched.
+  const offFs = ctx.inject(['fs'], (scoped) => {
+    try {
+      disposers.push(
+        installFsBridge({
+          fs: scoped.fs,
+          registry,
+          workspaces: async () => (await loadState()).workspaces,
+          log: (message, error) => console.error(message, error),
+        }),
+      )
+    } catch (error) {
+      console.error('remote-suite: installing the filesystem bridge failed', error)
+    }
+  })
+
   // `webServer` is optional: a bare CLI host has no routes to serve, and the
   // `remote` tool must keep working there.
   const offWeb = ctx.inject(['webServer'], (scoped) => {
@@ -205,6 +225,11 @@ export function apply(ctx, config = {}) {
       if (typeof offWeb === 'function') offWeb()
     } catch (error) {
       console.error('remote-suite: disposing the webServer injection failed', error)
+    }
+    try {
+      if (typeof offFs === 'function') offFs()
+    } catch (error) {
+      console.error('remote-suite: disposing the fs injection failed', error)
     }
     for (const dispose of disposers) {
       try {

@@ -720,8 +720,6 @@ window.__ModuleLoader__.load({
     const CSS = `
       .rs-root { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
       .rs-workspace { display: flex; flex: 1 1 auto; width: 100%; min-width: 0; height: 100%; min-height: 0; }
-      /* The sidebar tab body: the workbench tree, sized to the pane instead of the screen. */
-      .rs-sr-files { display: flex; width: 100%; height: 100%; min-height: 0; overflow: hidden; border-radius: 10px; }
       .rs-side { width: 280px; min-width: 200px; max-width: 46%; border-right: 1px solid var(--dsh-border, rgba(127,127,127,0.25));
                  display: flex; flex-direction: column; min-height: 0; }
       .rs-row { display: flex; align-items: center; gap: 6px; padding: 0 10px; }
@@ -2975,58 +2973,6 @@ window.__ModuleLoader__.load({
 
     // The overlay itself. It owns the keyboard shortcut and keeps the rest of
     // the app usable underneath: clicking the backdrop closes it, Escape too.
-    // The body of the sidebar's "远程文件" tab. It is the same workbench tree the
-    // overlay shows, but every read goes through the remote API, so an SSH or
-    // Docker workspace browses the files that actually live there — the built-in
-    // file panel only sees the host filesystem, and for those workspaces that is
-    // an empty mirror directory.
-    function RemoteFilesTab() {
-      useStyle()
-      return h('div', { className: 'rs-sr-files' }, h(Workspace))
-    }
-
-    // Register the tab type the right sidebar understands. The type is an
-    // *extension*: it sits beside the built-in file tab (its guide entry is one
-    // more capsule in the sidebar's guide) instead of replacing it, so local
-    // workspaces keep the host's own panel. Both halves — the type and its body
-    // — live in effects, so they disappear with the plugin.
-    function registerSidebarFiles(ctx) {
-      if (typeof ctx.inject !== 'function') return
-      try {
-        ctx.inject(['sidebarRightTabs'], (inner) => {
-          const id = PANEL_ID + '/files'
-          try {
-            inner.effect(
-              () =>
-                inner.sidebarRightTabs.register({
-                  id,
-                  kind: 'remote-files',
-                  priority: 'extension',
-                  title: () => '远程文件',
-                  guide: [
-                    {
-                      id: 'remote-files',
-                      order: 20,
-                      title: () => '远程文件',
-                      description: () => '浏览和编辑 SSH / Docker 工作区里的文件',
-                    },
-                  ],
-                }),
-              'dsh-remote-suite: sidebar files type',
-            )
-            inner.effect(
-              () => inner.slots.register({ name: 'sidebar.right.pane.tab', key: id }, RemoteFilesTab),
-              'dsh-remote-suite: sidebar files body',
-            )
-          } catch (error) {
-            console.error('dsh-remote-suite: the sidebar file tab could not register', error)
-          }
-        })
-      } catch (error) {
-        console.error('dsh-remote-suite: this DSH has no sidebarRightTabs service', error)
-      }
-    }
-
     function WorkbenchOverlay() {
       useStyle()
       const store = useStore()
@@ -3218,7 +3164,6 @@ window.__ModuleLoader__.load({
         }
       }
       registerSeats(ctx, stops)
-      registerSidebarFiles(ctx)
       return () => {
         for (const stop of stops) {
           if (typeof stop === 'function') stop()
