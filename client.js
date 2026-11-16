@@ -1169,13 +1169,14 @@ window.__ModuleLoader__.load({
       .rs-sf-btn:disabled { opacity: 0.45; cursor: default; }
       .rs-sf-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 6px 10px; }
       .rs-sf-row {
-        display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px;
+        display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px;
         border-radius: 6px; cursor: pointer; user-select: none;
       }
       .rs-sf-row:hover { background: var(--dsh-hover, rgba(127,127,127,0.12)); }
       .rs-sf-row.is-on { background: color-mix(in srgb, var(--dsh-accent, #4b8bf5) 16%, transparent); }
-      .rs-sf-icon { flex: 0 0 auto; width: 14px; text-align: center; opacity: 0.62; }
+      .rs-sf-icon { flex: 0 0 auto; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; }
       .rs-sf-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rs-sf-name.is-hidden { opacity: 0.62; }
       .rs-sf-meta { flex: 0 0 auto; font-size: 11px; opacity: 0.5; }
       .rs-sf-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
       .rs-sf-text {
@@ -3299,14 +3300,50 @@ window.__ModuleLoader__.load({
     const SF_ZIP_MAX_FILES = 200
     const SF_ZIP_MAX_BYTES = 50 * 1024 * 1024
 
-    /** A glyph per entry, so a directory tree scans faster than a flat list. */
+    /** Hue per file family, so a long listing is scanned by colour, not glyphs. */
+    function sfIconTint(name, isDir) {
+      if (isDir === true) return '#f0b429'
+      if (SF_IMAGE_RE.test(name)) return '#e255a1'
+      if (SF_AUDIO_RE.test(name)) return '#f0913a'
+      if (SF_ARCHIVE_RE.test(name)) return '#a06bff'
+      if (/\.(sh|bash|zsh|ps1|bat|cmd)$/i.test(name)) return '#2fb344'
+      if (/\.(pdf|docx?|xlsx?|pptx?)$/i.test(name)) return '#e0574f'
+      if (/\.(md|markdown|rst|txt)$/i.test(name)) return '#4a90e2'
+      if (/\.(jsonc?|ya?ml|toml|ini|cfg|conf|env)$/i.test(name)) return '#b07cf0'
+      if (SF_CODE_RE.test(name)) return '#4b8bf5'
+      return '#9aa4b2'
+    }
+
+    /** A coloured glyph per entry: folders amber, pages tinted by file family. */
     function filesIcon(entry) {
-      if (entry.isDir === true) return '▸'
-      if (SF_IMAGE_RE.test(entry.name)) return '▣'
-      if (SF_AUDIO_RE.test(entry.name)) return '♫'
-      if (SF_ARCHIVE_RE.test(entry.name)) return '▤'
-      if (SF_CODE_RE.test(entry.name)) return '⌘'
-      return '·'
+      const tint = sfIconTint(entry.name, entry.isDir)
+      const base = { width: 15, height: 15, viewBox: '0 0 16 16', 'aria-hidden': 'true' }
+      if (entry.isDir === true) {
+        return h(
+          'svg',
+          base,
+          h('path', {
+            d: 'M1.6 4.1c0-.7.6-1.2 1.2-1.2h3.1l1.4 1.7h6.1c.7 0 1.2.6 1.2 1.2v6.6c0 .7-.6 1.2-1.2 1.2H2.8c-.7 0-1.2-.5-1.2-1.2V4.1Z',
+            fill: tint,
+          }),
+          h('path', { d: 'M1.6 6.2h12.8', stroke: 'rgba(0,0,0,0.16)', strokeWidth: 1 }),
+        )
+      }
+      return h(
+        'svg',
+        base,
+        h('path', {
+          d: 'M3.3 1.7h5.9l3.5 3.4v9.2c0 .6-.5 1.1-1.1 1.1H3.3c-.6 0-1.1-.5-1.1-1.1V2.8c0-.6.5-1.1 1.1-1.1Z',
+          fill: tint,
+          fillOpacity: 0.18,
+        }),
+        h('path', {
+          d: 'M3.3 1.7h5.9l3.5 3.4v9.2c0 .6-.5 1.1-1.1 1.1H3.3c-.6 0-1.1-.5-1.1-1.1V2.8c0-.6.5-1.1 1.1-1.1Z',
+          stroke: tint,
+          strokeWidth: 1,
+        }),
+        h('path', { d: 'M9.2 1.7v3.4h3.5', stroke: tint, strokeWidth: 1 }),
+      )
     }
 
     let sfCrcTable = null
@@ -4110,7 +4147,7 @@ window.__ModuleLoader__.load({
               onContextMenu: (event) => openMenu(event, entry),
             },
             h('span', { className: 'rs-sf-icon' }, filesIcon(entry)),
-            h('span', { className: 'rs-sf-name' }, entry.name),
+            h('span', { className: 'rs-sf-name' + (entry.name.charAt(0) === '.' ? ' is-hidden' : '') }, entry.name),
             entry.isDir === true ? null : h('span', { className: 'rs-sf-meta' }, filesBytes(entry.size)),
           ),
         )
