@@ -3543,13 +3543,15 @@ window.__ModuleLoader__.load({
             stops.push(
               inner.effect(
                 () =>
-                  inner.slots.register(
-                    {
-                      name: 'sidebar.right.pane.tab',
-                      key: FILES_TAB_ID,
-                      inject: (sessionId) => ({ sessionId }),
-                    },
-                    SidebarFiles,
+                  inner.slots.inject('sidebar.right.pane.tab', () =>
+                    inner.slots.register(
+                      {
+                        name: 'sidebar.right.pane.tab',
+                        key: FILES_TAB_ID,
+                        inject: (sessionId) => ({ sessionId }),
+                      },
+                      SidebarFiles,
+                    ),
                   ),
                 'dsh-remote-suite: files tab body',
               ),
