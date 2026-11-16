@@ -209,33 +209,6 @@ try {
     'no-such-container-xyz',
   )
   console.log('ok  prepare path (docker without a live rootfs falls back to a mirror)')
-
-  // The sidebar files panel asks where a directory belongs before it lists it:
-  // a plain path stays local, a mirror directory carries its own target.
-  const localRoot = await api['fs-root']({ path: root })
-  assert.equal(localRoot.kind, 'local')
-
-  const mirror = path.join(path.dirname(stateFile), 'mirrors', 'ssh-demo-01234567')
-  await fs.mkdir(mirror, { recursive: true })
-  await fs.writeFile(
-    path.join(mirror, '.dsh-remote.json'),
-    JSON.stringify({ targetId: 'ssh:demo', path: '/srv/app' }),
-  )
-  const remoteRoot = await api['fs-root']({ path: mirror })
-  assert.equal(remoteRoot.kind, 'remote')
-  assert.equal(remoteRoot.targetId, 'ssh:demo')
-  assert.equal(remoteRoot.path, '/srv/app')
-  assert.equal(remoteRoot.localPath, mirror)
-
-  const found = await api['fs-search']({ target: 'local', path: root, query: 'gamma' })
-  assert.equal(found.entries.length, 1)
-  assert.equal(found.entries[0].line, 1)
-  assert.ok(found.entries[0].path.endsWith('b.txt'))
-  assert.equal(found.entries[0].column, 1)
-
-  const none = await api['fs-search']({ target: 'local', path: root, query: 'nothing-matches-this' })
-  assert.equal(none.entries.length, 0)
-  console.log('ok  fs root + fs search')
 } finally {
   await fs.rm(root, { recursive: true, force: true })
   await fs.rm(stateFile, { force: true })

@@ -21,11 +21,6 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
   Docker / SSH 工作区也能用这块工作台：它的
   `tree` / `read` / `write` / `mkdir` / `rename` / `remove` 全部经 API 直接在远端执行（Docker 走
   `docker exec`），不做本地镜像。SSH 工作区在 DSH 里打开的是空镜像目录，看远端真文件就用这块工作台。
-- **右侧栏「工作区文件」直接看远端目录**：SSH（以及容器已停的 Docker）工作区在本地只是一个空的
-  镜像目录，官方那个文件面板读宿主文件系统，所以是空的。插件注册了自己的文件面板，接管右侧栏的
-  「工作区文件」：带 `.dsh-remote.json` / `.dsh-docker.json` 标记的镜像目录，列目录、开文件、保存、
-  新建、重命名、删除、搜索全部走远端后端（SSH 通道 / `docker exec` / WSL）；本机、WSL 的 UNC 路径、
-  运行中容器的 9p 路径照旧走宿主，行为不变。
 - **一个工具管全部**：`remote` 有 22 个 action——执行命令、读 / 写 / 改文件、`mkdir` / `rename` /
   `remove`、`grep`、`glob`、列目录、保存工作区、镜像同步——目标从 WSL 换成 Docker 或 SSH，参数写法不变。
 - **远程 SSH**：主机直接读 `~/.ssh/config`，也能在对话框里新增；别名可以用中文；密钥、ssh-agent、
