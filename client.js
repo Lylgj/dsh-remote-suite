@@ -1178,11 +1178,13 @@ window.__ModuleLoader__.load({
       .rs-sf-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .rs-sf-name.is-hidden { opacity: 0.62; }
       .rs-sf-caret {
-        flex: 0 0 auto; width: 12px; height: 15px; display: flex; align-items: center; justify-content: center;
-        font-size: 10px; opacity: 0.5; border-radius: 3px; cursor: pointer;
+        flex: 0 0 auto; width: 22px; height: 22px; margin-left: -5px; margin-right: -3px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 6px; cursor: pointer; opacity: 0.72;
       }
-      .rs-sf-caret:hover { opacity: 0.9; background: color-mix(in srgb, currentColor 10%, transparent); }
-      .rs-sf-caret.is-open { opacity: 0.78; }
+      .rs-sf-caret svg { transition: transform 0.14s ease; }
+      .rs-sf-caret.is-open svg { transform: rotate(90deg); }
+      .rs-sf-caret:hover { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); }
       .rs-sf-caret.is-leaf { visibility: hidden; cursor: default; }
       .rs-sf-at {
         flex: 0 0 auto; border: 0; background: transparent; color: inherit; font: inherit; font-size: 11px;
@@ -4210,7 +4212,11 @@ window.__ModuleLoader__.load({
                   return
                 }
                 setSelected([entry.path])
-                enter(entry)
+                // A directory only unfolds in place: the listing stays where it
+                // is, so the tree reads as one surface instead of a stack of
+                // screens. Use the context menu to make a directory the root.
+                if (entry.isDir === true) toggleDir(entry)
+                else enter(entry)
               },
               onContextMenu: (event) => openMenu(event, entry),
             },
@@ -4219,12 +4225,24 @@ window.__ModuleLoader__.load({
                   'span',
                   {
                     className: 'rs-sf-caret' + (kids[entry.path] === undefined ? '' : ' is-open'),
+                    title: tr('展开或收起'),
                     onClick: (event) => {
                       event.stopPropagation()
                       toggleDir(entry)
                     },
                   },
-                  kids[entry.path] === undefined ? '▸' : '▾',
+                  h(
+                    'svg',
+                    { width: 16, height: 16, viewBox: '0 0 16 16', 'aria-hidden': 'true' },
+                    h('path', {
+                      d: 'M6.2 3.4 10.8 8l-4.6 4.6',
+                      fill: 'none',
+                      stroke: 'currentColor',
+                      strokeWidth: 2,
+                      strokeLinecap: 'round',
+                      strokeLinejoin: 'round',
+                    }),
+                  ),
                 )
               : h('span', { className: 'rs-sf-caret is-leaf' }),
             h('span', { className: 'rs-sf-icon' }, filesIcon(entry)),
@@ -4496,7 +4514,8 @@ window.__ModuleLoader__.load({
       "已把路径加入输入框": "Added the path to the prompt",
       "已复制路径": "Copied the path",
       "无法写入输入框": "Could not reach the prompt",
-      "把路径加入输入框": "Put this path in the prompt"
+      "把路径加入输入框": "Put this path in the prompt",
+      "展开或收起": "Expand or collapse"
     }
 
     /** The DSH locale service, attached by attachLocale() from apply(). */
