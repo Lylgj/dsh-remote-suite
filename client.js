@@ -4242,58 +4242,91 @@ window.__ModuleLoader__.load({
         }),
       )
     }
+    /**
+     * How long to wait before claiming the `files` kind. The host allows one
+     * `extension` claim per kind, and better-sidebar claims the same one, so the
+     * outcome must not depend on which bundle happens to load first.
+     */
+    const FILES_CLAIM_DELAY_MS = 250
+
+    /** Whether better-sidebar's client half is loaded (`provide("betterSidebar")`). */
+    function betterSidebarLoaded(ctx) {
+      try {
+        return typeof ctx.get === 'function' && ctx.get('betterSidebar') !== undefined
+      } catch {
+        return false
+      }
+    }
+
     function registerFilesTab(ctx) {
       try {
         ctx.inject(['sidebarRightTabs'], (scoped) => {
           const id = PANEL_ID + '/files'
-          // The host lets at most one `files` takeover live: two `extension`
-          // bands for the same kind make the second registration throw
-          // ("tab kind ... is already registered"). better-sidebar registers
-          // the same kind, so bow out instead of breaking the whole plugin
-          // when it is already in force.
-          const taken = typeof scoped.sidebarRightTabs.get === 'function'
-            ? scoped.sidebarRightTabs.get('files')
-            : undefined
-          if (taken !== undefined && taken.id !== id) {
-            console.warn(
-              '[dsh-remote-suite] 右侧栏 files 页签已被 ' + String(taken.id || '另一个插件') + ' 占用，跳过注册',
-            )
-            return
-          }
-          scoped.effect(
-            () =>
-              scoped.sidebarRightTabs.register({
-                id,
-                kind: 'files',
-                keepMounted: true,
-                priority: 'extension',
-                title: () => '文件',
-                guide: [
-                  {
-                    id: 'files',
-                    order: 10,
+          scoped.effect(() => {
+            let stopped = false
+            const timer = setTimeout(() => {
+              if (stopped) return
+              // Two `extension` bands for the same kind make the second
+              // registration throw ("tab kind ... is already registered"), so
+              // whoever is already in force keeps the kind.
+              const taken = typeof scoped.sidebarRightTabs.get === 'function'
+                ? scoped.sidebarRightTabs.get('files')
+                : undefined
+              if (taken !== undefined && taken.id !== id) {
+                console.warn(
+                  '[dsh-remote-suite] 右侧栏 files 页签已被 ' + String(taken.id || '另一个插件') + ' 占用，跳过注册',
+                )
+                return
+              }
+              // better-sidebar's panel is preferred when installed: our host
+              // answers its `/sidebar/api/*` calls with remote files, so its UI
+              // already shows the remote tree.
+              if (betterSidebarLoaded(ctx)) {
+                console.info(
+                  '[dsh-remote-suite] 检测到 dsh-better-sidebar，右侧栏沿用它的文件面板（数据仍由本插件提供）',
+                )
+                return
+              }
+              scoped.effect(
+                () =>
+                  scoped.sidebarRightTabs.register({
+                    id,
+                    kind: 'files',
+                    keepMounted: true,
+                    priority: 'extension',
                     title: () => '文件',
-                    description: () => '浏览工作区文件树，点开即预览或编辑',
-                    icon: filesGuideIcon,
-                  },
-                ],
-              }),
-            'dsh-remote-suite: files tab type',
-          )
-          scoped.effect(
-            () =>
-              scoped.slots.inject('sidebar.right.pane.tab', () =>
-                scoped.slots.register(
-                  {
-                    name: 'sidebar.right.pane.tab',
-                    key: id,
-                    inject: (sessionId) => ({ sessionId }),
-                  },
-                  FilesPanel,
-                ),
-              ),
-            'dsh-remote-suite: files tab body',
-          )
+                    guide: [
+                      {
+                        id: 'files',
+                        order: 10,
+                        title: () => '文件',
+                        description: () => '浏览工作区文件树，点开即预览或编辑',
+                        icon: filesGuideIcon,
+                      },
+                    ],
+                  }),
+                'dsh-remote-suite: files tab type',
+              )
+              scoped.effect(
+                () =>
+                  scoped.slots.inject('sidebar.right.pane.tab', () =>
+                    scoped.slots.register(
+                      {
+                        name: 'sidebar.right.pane.tab',
+                        key: id,
+                        inject: (sessionId) => ({ sessionId }),
+                      },
+                      FilesPanel,
+                    ),
+                  ),
+                'dsh-remote-suite: files tab body',
+              )
+            }, FILES_CLAIM_DELAY_MS)
+            return () => {
+              stopped = true
+              clearTimeout(timer)
+            }
+          }, 'dsh-remote-suite: files tab claim')
         })
       } catch (error) {
         console.error('dsh-remote-suite: this DSH has no sidebarRightTabs service', error)

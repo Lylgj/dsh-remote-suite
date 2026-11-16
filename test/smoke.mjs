@@ -45,7 +45,7 @@ const ctx = {
 const dispose = apply(ctx, {})
 assert.equal(name, 'remote-suite')
 assert.equal(registered.length, 1, 'apply must register exactly one tool')
-assert.equal(routes.length, 3, 'apply must register the JSON API, the asset route and the sidebar file routes')
+assert.equal(routes.length, 15, 'apply must register the JSON API, the assets, our file routes and the better-sidebar aliases')
 const apiRoute = routes.find((route) => route.path === '/remote-suite/api')
 assert.ok(apiRoute !== undefined, 'the JSON API route must be mounted')
 assert.equal(typeof apiRoute.handler, 'function')
@@ -156,6 +156,43 @@ assert.equal(await run({ action: 'read', target: 'local', path: file }), '你好
 assert.match(await run({ action: 'stat', target: 'local', path: file }), /file \d+ bytes/)
 assert.match(await run({ action: 'list', target: 'local', path: dir }), /hello\.txt/)
 check('local read/write/stat/list')
+
+// --- better-sidebar compatibility routes ------------------------------------
+// With dsh-better-sidebar installed, its panel calls `/sidebar/api/<method>`;
+// exact routes win over its prefix route, so the same handlers must answer there
+// too — and without the header only this plugin's own page can attach.
+const compatTreeRoute = routes.find((route) => route.kind === 'exact' && route.path === '/sidebar/api/fs.tree')
+assert.ok(compatTreeRoute !== undefined, "the file API must also answer on better-sidebar's own path")
+assert.equal(routes.filter((route) => route.kind === 'exact' && route.path.startsWith('/sidebar/')).length, 12)
+async function postCompat(route, payload, headers = {}) {
+  const req = Readable.from([JSON.stringify(payload)])
+  req.method = 'POST'
+  req.url = route.path
+  req.headers = { ...headers }
+  let status
+  let body
+  const res = {
+    writeHead(code) {
+      status = code
+    },
+    end(text) {
+      body = text
+    },
+  }
+  await route.handler(req, res)
+  return { status, body: body === undefined ? undefined : JSON.parse(body) }
+}
+const compatTree = await postCompat(compatTreeRoute, { cwd: dir })
+assert.equal(compatTree.status, 200)
+assert.equal(compatTree.body.ok, true)
+assert.ok(
+  compatTree.body.value.entries.some((entry) => entry.name === 'hello.txt'),
+  'the compatibility route must list the same directory',
+)
+check('compat fs.tree answers without the client header')
+const compatDenied = await postCompat(compatTreeRoute, { cwd: dir }, { origin: 'http://evil.example' })
+assert.equal(compatDenied.status, 403)
+check('compat route rejects a foreign origin')
 
 // --- read window -----------------------------------------------------------
 const window = await run({ action: 'read', target: 'local', path: file, offset: 1, limit: 1 })

@@ -228,124 +228,161 @@ export function apply(ctx, config = {}) {
   /**
    * Better-sidebar's filesystem wire format, served by this plugin.
    *
-   *   POST /remote-suite/sidebar/api/<method>   JSON in, `{ ok, value }` out
-   *   POST /remote-suite/sidebar/write          raw UTF-8 body, query params
-   *   GET  /remote-suite/sidebar/file           raw bytes with a content type
+   *   POST <base>/api/<method>   JSON in, `{ ok, value }` out
+   *   POST <base>/write          raw UTF-8 body, query params
+   *   GET  <base>/file           raw bytes with a content type
+   *
+   * `compat` serves the same handlers on better-sidebar's own paths
+   * (`/sidebar/api/…`), so its UI reads our remote files when both are
+   * installed: exact routes are matched before its prefix route, and the
+   * browser cannot forge the header only our own page attaches.
    */
-  const mountSidebar = (webServer) => {
-    const dispose = webServer.register({
+  const serveSidebar = async (req, res, rest, compat) => {
+    const url = new URL(req.url || '/', 'http://remote-suite.invalid')
+    const query = {
+      sessionId: url.searchParams.get('sessionId') ?? undefined,
+      cwd: url.searchParams.get('cwd') ?? undefined,
+      path: url.searchParams.get('path') ?? undefined,
+      dir: url.searchParams.get('dir') ?? undefined,
+      relativePath: url.searchParams.get('relativePath') ?? undefined,
+      expectedMtimeMs: (() => {
+        const raw = url.searchParams.get('expectedMtimeMs')
+        const parsed = raw === null ? Number.NaN : Number(raw)
+        return Number.isFinite(parsed) ? parsed : undefined
+      })(),
+    }
+    try {
+      // Our own page proves itself with a header. `/file` is fetched by the
+      // img/audio tags of the panel, which cannot set one, so that route falls
+      // back to a same-origin check instead; a `compat` request comes from
+      // better-sidebar's UI and can only be checked for the same origin.
+      if (compat) {
+        if (!sameOrigin(req)) {
+          sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+          return
+        }
+      } else if (req.headers[CLIENT_HEADER] !== '1' && (rest !== '/file' || !sameOrigin(req))) {
+        sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+        return
+      }
+      if (rest === '/write') {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+          return
+        }
+        const content = await readBody(req)
+        const written = await sidebarFs.writeText({ ...query, content })
+        sidebarFs.invalidate()
+        sendJson(res, 200, { ok: true, value: { ok: true, mtimeMs: written.mtimeMs } })
+        return
+      }
+      if (rest === '/upload') {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+          return
+        }
+        const data = await readBodyBuffer(req, MAX_UPLOAD_BYTES)
+        const value = await sidebarFs.upload({
+          sessionId: query.sessionId,
+          cwd: query.cwd,
+          dir: query.dir,
+          relativePath: query.relativePath,
+          data,
+        })
+        sidebarFs.invalidate(query.dir)
+        sendJson(res, 200, { ok: true, value })
+        return
+      }
+      if (rest === '/file') {
+        if (req.method !== 'GET') {
+          sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+          return
+        }
+        const file = await sidebarFs.readAll(query)
+        const total = file.buffer.length
+        const range = typeof req.headers.range === 'string' ? /^bytes=(\d*)-(\d*)$/.exec(req.headers.range.trim()) : null
+        const headers = {
+          'content-type': mediaType(file.path),
+          'cache-control': 'no-cache',
+          'accept-ranges': 'bytes',
+          'x-content-type-options': 'nosniff',
+          'referrer-policy': 'no-referrer',
+        }
+        if (range !== null) {
+          const start = range[1] === '' ? 0 : Number(range[1])
+          const end = range[2] === '' ? total - 1 : Math.min(Number(range[2]), total - 1)
+          if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= total) {
+            res.writeHead(416, { 'content-range': `bytes */${total}` })
+            res.end()
+            return
+          }
+          res.writeHead(206, { ...headers, 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/${total}` })
+          res.end(file.buffer.subarray(start, end + 1))
+          return
+        }
+        res.writeHead(200, { ...headers, 'content-length': String(total) })
+        res.end(file.buffer)
+        return
+      }
+      if (rest.startsWith('/api/')) {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+          return
+        }
+        const method = rest.slice('/api/'.length)
+        const fn = sidebarFs.methods[method]
+        if (typeof fn !== 'function') {
+          sendJson(res, 404, { ok: false, error: { code: 'not-found', message: `unknown fs method: ${method}` } })
+          return
+        }
+        const raw = await readBody(req)
+        const payload = raw === '' ? {} : JSON.parse(raw)
+        const value = await fn(payload === null || typeof payload !== 'object' ? {} : payload)
+        if (method !== 'fs.tree' && method !== 'fs.trees' && method !== 'fs.read' && method !== 'fs.readPage' && method !== 'fs.search') {
+          sidebarFs.invalidate()
+        }
+        sendJson(res, 200, { ok: true, value })
+        return
+      }
+      sendJson(res, 404, { ok: false, error: { code: 'not-found', message: 'not found' } })
+    } catch (error) {
+      sendJson(res, statusOf(error), { ok: false, error: wireError(error) })
+    }
+  }
+
+  const mountSidebar = (webServer) =>
+    webServer.register({
       kind: 'prefix',
       path: SIDEBAR_BASE,
       handler: async (req, res) => {
         const url = new URL(req.url || '/', 'http://remote-suite.invalid')
-        const rest = url.pathname.slice(SIDEBAR_BASE.length) || '/'
-        const query = {
-          sessionId: url.searchParams.get('sessionId') ?? undefined,
-          cwd: url.searchParams.get('cwd') ?? undefined,
-          path: url.searchParams.get('path') ?? undefined,
-          dir: url.searchParams.get('dir') ?? undefined,
-          relativePath: url.searchParams.get('relativePath') ?? undefined,
-          expectedMtimeMs: (() => {
-            const raw = url.searchParams.get('expectedMtimeMs')
-            const parsed = raw === null ? Number.NaN : Number(raw)
-            return Number.isFinite(parsed) ? parsed : undefined
-          })(),
-        }
-        try {
-          // The JSON API and writes must carry our client header. `/file` is
-          // fetched by the img/audio tags of the panel, which cannot set one, so
-          // that route falls back to a same-origin check instead — anything else
-          // still has to prove it is our page.
-          if (req.headers[CLIENT_HEADER] !== '1' && (rest !== '/file' || !sameOrigin(req))) {
-            sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
-            return
-          }
-          if (rest === '/write') {
-            if (req.method !== 'POST') {
-              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
-              return
-            }
-            const content = await readBody(req)
-            const written = await sidebarFs.writeText({ ...query, content })
-            sidebarFs.invalidate()
-            sendJson(res, 200, { ok: true, value: { ok: true, mtimeMs: written.mtimeMs } })
-            return
-          }
-          if (rest === '/upload') {
-            if (req.method !== 'POST') {
-              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
-              return
-            }
-            const data = await readBodyBuffer(req, MAX_UPLOAD_BYTES)
-            const value = await sidebarFs.upload({
-              sessionId: query.sessionId,
-              cwd: query.cwd,
-              dir: query.dir,
-              relativePath: query.relativePath,
-              data,
-            })
-            sidebarFs.invalidate(query.dir)
-            sendJson(res, 200, { ok: true, value })
-            return
-          }
-          if (rest === '/file') {
-            if (req.method !== 'GET') {
-              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
-              return
-            }
-            const file = await sidebarFs.readAll(query)
-            const total = file.buffer.length
-            const range = typeof req.headers.range === 'string' ? /^bytes=(\d*)-(\d*)$/.exec(req.headers.range.trim()) : null
-            const headers = {
-              'content-type': mediaType(file.path),
-              'cache-control': 'no-cache',
-              'accept-ranges': 'bytes',
-              'x-content-type-options': 'nosniff',
-              'referrer-policy': 'no-referrer',
-            }
-            if (range !== null) {
-              const start = range[1] === '' ? 0 : Number(range[1])
-              const end = range[2] === '' ? total - 1 : Math.min(Number(range[2]), total - 1)
-              if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= total) {
-                res.writeHead(416, { 'content-range': `bytes */${total}` })
-                res.end()
-                return
-              }
-              res.writeHead(206, { ...headers, 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/${total}` })
-              res.end(file.buffer.subarray(start, end + 1))
-              return
-            }
-            res.writeHead(200, { ...headers, 'content-length': String(total) })
-            res.end(file.buffer)
-            return
-          }
-          if (rest.startsWith('/api/')) {
-            if (req.method !== 'POST') {
-              sendJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
-              return
-            }
-            const method = rest.slice('/api/'.length)
-            const fn = sidebarFs.methods[method]
-            if (typeof fn !== 'function') {
-              sendJson(res, 404, { ok: false, error: { code: 'not-found', message: `unknown fs method: ${method}` } })
-              return
-            }
-            const raw = await readBody(req)
-            const payload = raw === '' ? {} : JSON.parse(raw)
-            const value = await fn(payload === null || typeof payload !== 'object' ? {} : payload)
-            if (method !== 'fs.tree' && method !== 'fs.trees' && method !== 'fs.read' && method !== 'fs.readPage' && method !== 'fs.search') {
-              sidebarFs.invalidate()
-            }
-            sendJson(res, 200, { ok: true, value })
-            return
-          }
-          sendJson(res, 404, { ok: false, error: { code: 'not-found', message: 'not found' } })
-        } catch (error) {
-          sendJson(res, statusOf(error), { ok: false, error: wireError(error) })
-        }
+        await serveSidebar(req, res, url.pathname.slice(SIDEBAR_BASE.length) || '/', false)
       },
     })
-    return dispose
+
+  /**
+   * The same handlers on better-sidebar's own paths. Exact routes are matched
+   * before its `/sidebar/api` prefix route, so with both plugins installed its
+   * panel shows our remote files; without it these routes are never called.
+   */
+  const mountSidebarCompat = (webServer) => {
+    const paths = ['/write', '/upload', '/file', ...Object.keys(sidebarFs.methods).map((method) => `/api/${method}`)]
+    const offs = paths.map((rest) =>
+      webServer.register({
+        kind: 'exact',
+        path: '/sidebar' + rest,
+        handler: (req, res) => serveSidebar(req, res, rest, true),
+      }),
+    )
+    return () => {
+      for (const off of offs) {
+        try {
+          off()
+        } catch {
+          // Already disposed.
+        }
+      }
+    }
   }
 
   // `webServer` is optional: a bare CLI host has no routes to serve, and the
@@ -355,6 +392,7 @@ export function apply(ctx, config = {}) {
       disposers.push(mountApi(scoped.webServer))
       disposers.push(mountAssets(scoped.webServer))
       disposers.push(mountSidebar(scoped.webServer))
+      disposers.push(mountSidebarCompat(scoped.webServer))
       const pty = createPtyServer({ registry, WebSocketServer: loadWebSocketServer() })
       disposers.push(() => pty.dispose())
       disposers.push(
@@ -378,23 +416,23 @@ export function apply(ctx, config = {}) {
       // The watch socket: same origin fence as the PTY, then our polling watcher.
       const watch = createFsWatch({ sidebarFs, WebSocketServer: loadWebSocketServer() })
       disposers.push(() => watch.dispose())
-      disposers.push(
-        scoped.webServer.registerUpgrade({
-          path: SIDEBAR_WATCH_PATH,
-          handler: (req, socket, head) => {
-            if (!sameOrigin(req)) {
-              try {
-                socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
-              } catch {
-                // Socket already closed.
-              }
-              socket.destroy()
-              return
-            }
-            watch.upgrade(req, socket, head)
-          },
-        }),
-      )
+      const watchUpgrade = (req, socket, head) => {
+        if (!sameOrigin(req)) {
+          try {
+            socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+          } catch {
+            // Socket already closed.
+          }
+          socket.destroy()
+          return
+        }
+        watch.upgrade(req, socket, head)
+      }
+      disposers.push(scoped.webServer.registerUpgrade({ path: SIDEBAR_WATCH_PATH, handler: watchUpgrade }))
+      // better-sidebar's own `/sidebar/ws/fs-watch` socket is deliberately left
+      // alone: one socket has one protocol owner and a second registration
+      // throws inside its apply, which would break that plugin. Its panel
+      // therefore keeps its own (local-only) watcher when both are installed.
     } catch (error) {
       console.error('remote-suite: mounting routes failed', error)
     }

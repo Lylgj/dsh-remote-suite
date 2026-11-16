@@ -21,13 +21,14 @@ SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并�
   Docker / SSH 工作区也能用这块工作台：它的
   `tree` / `read` / `write` / `mkdir` / `rename` / `remove` 全部经 API 直接在远端执行（Docker 走
   `docker exec`），不做本地镜像。SSH 工作区在 DSH 里打开的是空镜像目录，看远端真文件就用这块工作台。
-- **右侧栏「工作区文件」**：DSH 右侧栏的文件面板由本插件接管，对**本机、WSL、SSH、Docker**
-  一视同仁——列表、打开、编辑、保存、新建、改名、删除、搜索都直接落在工作区真正的那一侧，
+- **右侧栏「工作区文件」**：DSH 右侧栏的文件面板对**本机、WSL、SSH、Docker** 一视同仁——
+  列表、打开、编辑、保存、新建、改名、删除、搜索都直接落在工作区真正的那一侧，
   SSH / Docker 不再是空镜像目录。带行号与高亮编辑、`Ctrl+F` 查找、实时刷新（`fs-watch`）、
   上传/拖拽、单文件下载与目录打 zip、右键菜单、多选删除、大文件分页。接口形状与
   `dsh-better-sidebar` 相同（`fs.tree` / `fs.read` / `fs.readPage` / `fs.search` / `fs.rename` /
   `fs.mkdir` / `fs.createFile` / `fs.remove`，外加 `/write`、`/file`、`/upload`、`ws/fs-watch`），
-  但挂在本插件自己的路径 `/remote-suite/sidebar` 下，两个插件可以共存。
+  同时挂在本插件自己的 `/remote-suite/sidebar` 和它的 `/sidebar/api/*` 下：
+  **装了 dsh-better-sidebar 就用它的面板、数据来自本插件；没装就用本插件自带的面板**。
 - **一个工具管全部**：`remote` 有 22 个 action——执行命令、读 / 写 / 改文件、`mkdir` / `rename` /
   `remove`、`grep`、`glob`、列目录、保存工作区、镜像同步——目标从 WSL 换成 Docker 或 SSH，参数写法不变。
 - **远程 SSH**：主机直接读 `~/.ssh/config`，也能在对话框里新增；别名可以用中文；密钥、ssh-agent、

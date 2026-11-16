@@ -103,6 +103,11 @@ const ctx = {
 }
 module.apply(ctx)
 
+// The `files` kind is claimed one tick late on purpose (see FILES_CLAIM_DELAY_MS):
+// whichever of this plugin and better-sidebar would otherwise win by load order,
+// the decision is made after the install pass settles.
+await new Promise((resolve) => setTimeout(resolve, 400))
+
 // The workbench is the point of the plugin: a Docker/SSH workspace opens onto an
 // empty mirror directory, so the only way to browse and edit the container's real
 // files is this live workbench (tree/read/write all go through `docker exec` /
