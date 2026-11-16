@@ -58,9 +58,10 @@ const module = loaded.factory((id) => {
  *
  * @param {object} options
  * @param {string | undefined} options.takenId  id already holding the `files` kind
+ * @param {string} [options.takenPriority]      that holder's band (`extension` by default)
  * @param {boolean} options.betterSidebar       whether better-sidebar is loaded
  */
-async function mount({ takenId, betterSidebar }) {
+async function mount({ takenId, takenPriority = 'extension', betterSidebar }) {
   const tabTypes = []
   const warnings = []
   const infos = []
@@ -77,7 +78,9 @@ async function mount({ takenId, betterSidebar }) {
         slots: ctx.slots,
         sidebarRightTabs: {
           get(kind) {
-            return kind === 'files' && takenId !== undefined ? { id: takenId, kind: 'files' } : undefined
+            return kind === 'files' && takenId !== undefined
+              ? { id: takenId, kind: 'files', priority: takenPriority }
+              : undefined
           },
           register(definition) {
             tabTypes.push(definition)
@@ -146,6 +149,20 @@ async function mount({ takenId, betterSidebar }) {
     seats.has('sidebar.right.pane.tab:remote-suite/files'),
     'the panel body must be registered for the claimed kind',
   )
+}
+
+// 4. the Host's own pane holds the kind in the builtin band: that is precisely
+//    what an extension-band claim is for, so the claim must go ahead. Deferring
+//    here would leave the pane showing the local mirror directory.
+{
+  const { tabTypes, warnings } = await mount({
+    takenId: '@deepseek-ai/dsh-client-ui-sidebar-files',
+    takenPriority: 'builtin',
+    betterSidebar: false,
+  })
+  assert.equal(warnings.length, 0, 'the builtin pane is not a takeover to warn about')
+  assert.equal(tabTypes.length, 1, 'an extension claim outranks the builtin pane')
+  assert.equal(tabTypes[0].id, 'remote-suite/files')
 }
 
 console.log('sidebar takeover smoke ok')

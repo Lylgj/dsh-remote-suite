@@ -4385,13 +4385,16 @@ window.__ModuleLoader__.load({
               if (stopped) return
               // Two `extension` bands for the same kind make the second
               // registration throw ("tab kind ... is already registered"), so
-              // whoever is already in force keeps the kind.
-              const taken = typeof scoped.sidebarRightTabs.get === 'function'
+              // whoever is already in force keeps the kind. The Host's own pane
+              // sits in the `builtin` band, which an extension is meant to
+              // replace — deferring to it would leave the remote pane dead.
+              const held = typeof scoped.sidebarRightTabs.get === 'function'
                 ? scoped.sidebarRightTabs.get('files')
                 : undefined
-              if (taken !== undefined && taken.id !== id) {
+              const heldBand = held === undefined ? undefined : held.priority ?? 'extension'
+              if (held !== undefined && held.id !== id && heldBand === 'extension') {
                 console.warn(
-                  '[dsh-remote-suite] 右侧栏 files 页签已被 ' + String(taken.id || '另一个插件') + ' 占用，跳过注册',
+                  '[dsh-remote-suite] 右侧栏 files 页签已被 ' + String(held.id || '另一个插件') + ' 占用，跳过注册',
                 )
                 return
               }
