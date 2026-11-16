@@ -1177,6 +1177,25 @@ window.__ModuleLoader__.load({
       .rs-sf-icon { flex: 0 0 auto; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; }
       .rs-sf-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .rs-sf-name.is-hidden { opacity: 0.62; }
+      .rs-sf-caret {
+        flex: 0 0 auto; width: 12px; height: 15px; display: flex; align-items: center; justify-content: center;
+        font-size: 10px; opacity: 0.5; border-radius: 3px; cursor: pointer;
+      }
+      .rs-sf-caret:hover { opacity: 0.9; background: color-mix(in srgb, currentColor 10%, transparent); }
+      .rs-sf-caret.is-open { opacity: 0.78; }
+      .rs-sf-caret.is-leaf { visibility: hidden; cursor: default; }
+      .rs-sf-at {
+        flex: 0 0 auto; border: 0; background: transparent; color: inherit; font: inherit; font-size: 11px;
+        line-height: 1; padding: 3px 6px; border-radius: 6px; cursor: pointer; opacity: 0;
+        transition: opacity 0.12s ease;
+      }
+      .rs-sf-row:hover .rs-sf-at { opacity: 0.75; }
+      .rs-sf-at:hover { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); }
+      .rs-sf-notice { flex: 0 0 auto; padding: 6px 12px; font-size: 11px; opacity: 0.72; }
+      .rs-sf-codewrap .rs-code-ta {
+        z-index: 2; background: transparent; color: transparent;
+        caret-color: var(--dsh-fg, currentColor); resize: none;
+      }
       .rs-sf-meta { flex: 0 0 auto; font-size: 11px; opacity: 0.5; }
       .rs-sf-editor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
       .rs-sf-text {
@@ -3454,6 +3473,8 @@ window.__ModuleLoader__.load({
       const [query, setQuery] = React.useState('')
       const [hits, setHits] = React.useState(null)
       const [selected, setSelected] = React.useState([])
+      const [kids, setKids] = React.useState({})
+      const [notice, setNotice] = React.useState(null)
       const [menu, setMenu] = React.useState(null)
       const [dropping, setDropping] = React.useState(false)
       const [findOpen, setFindOpen] = React.useState(false)
@@ -3474,6 +3495,51 @@ window.__ModuleLoader__.load({
        * One level of the tree. `force` skips the host's 1.5 s listing cache so a
        * watch push can never be answered with the stale listing it invalidated.
        */
+      /** A path as the prompt should see it: relative to the workspace root. */
+      function referenceOf(path) {
+        const base = root === '' ? '' : root.replace(/\/+$/, '')
+        if (base !== '' && path.startsWith(base + '/')) return path.slice(base.length + 1)
+        return path
+      }
+
+      async function insertAtReference(entry) {
+        if (composerInsert(sessionId, '@' + referenceOf(entry.path))) {
+          setNotice(tr('已把路径加入输入框'))
+          return
+        }
+        try {
+          await navigator.clipboard.writeText(entry.path)
+          setNotice(tr('已复制路径'))
+        } catch {
+          setNotice(tr('无法写入输入框'))
+        }
+      }
+
+      /** One inline level: the caret expands a directory without leaving this one. */
+      async function toggleDir(entry) {
+        if (kids[entry.path] !== undefined) {
+          setKids((previous) => {
+            const next = { ...previous }
+            delete next[entry.path]
+            return next
+          })
+          return
+        }
+        try {
+          const value = await sidebarCall('fs.tree', Object.assign({}, scope, { path: entry.path }))
+          const children = value.entries || []
+          setKids((previous) => ({ ...previous, [entry.path]: children }))
+        } catch (failure) {
+          setError(filesErrorText(failure))
+        }
+      }
+
+      React.useEffect(() => {
+        if (notice === null) return undefined
+        const id = setTimeout(() => setNotice(null), 2200)
+        return () => clearTimeout(id)
+      }, [notice])
+
       const load = React.useCallback(
         (path, force) =>
           sidebarCall(
@@ -3484,6 +3550,7 @@ window.__ModuleLoader__.load({
               setRoot((previous) => (previous === '' ? value.path : previous))
               if (path === undefined || path === value.path) setDir(value.path)
               setRows(value.entries || [])
+              setKids({})
               setTruncated(value.truncated === true)
               setError(null)
               return value
@@ -4129,13 +4196,14 @@ window.__ModuleLoader__.load({
         if (rows.length === 0) {
           return h('div', { className: 'rs-sf-list' }, h('div', { className: 'rs-sf-empty' }, busy ? tr('加载中…') : tr('空目录')))
         }
-        const list = rows.map((entry) =>
+        const renderRow = (entry, depth) =>
           h(
             'div',
             {
               key: entry.path,
               className: 'rs-sf-row' + (selected.indexOf(entry.path) === -1 ? '' : ' is-sel'),
               title: entry.path,
+              style: depth === 0 ? undefined : { paddingLeft: 8 + depth * 14 },
               onClick: (event) => {
                 if (event.ctrlKey || event.metaKey || event.shiftKey) {
                   selectRow(entry, event)
@@ -4146,11 +4214,48 @@ window.__ModuleLoader__.load({
               },
               onContextMenu: (event) => openMenu(event, entry),
             },
+            entry.isDir === true
+              ? h(
+                  'span',
+                  {
+                    className: 'rs-sf-caret' + (kids[entry.path] === undefined ? '' : ' is-open'),
+                    onClick: (event) => {
+                      event.stopPropagation()
+                      toggleDir(entry)
+                    },
+                  },
+                  kids[entry.path] === undefined ? '▸' : '▾',
+                )
+              : h('span', { className: 'rs-sf-caret is-leaf' }),
             h('span', { className: 'rs-sf-icon' }, filesIcon(entry)),
             h('span', { className: 'rs-sf-name' + (entry.name.charAt(0) === '.' ? ' is-hidden' : '') }, entry.name),
             entry.isDir === true ? null : h('span', { className: 'rs-sf-meta' }, filesBytes(entry.size)),
-          ),
-        )
+            h(
+              'button',
+              {
+                className: 'rs-sf-at',
+                title: tr('把路径加入输入框'),
+                onClick: (event) => {
+                  event.stopPropagation()
+                  insertAtReference(entry)
+                },
+              },
+              '@',
+            ),
+          )
+
+        const renderTree = (entries, depth) => {
+          const out = []
+          for (const entry of entries) {
+            out.push(renderRow(entry, depth))
+            const children = kids[entry.path]
+            if (children !== undefined && children.length > 0) {
+              for (const node of renderTree(children, depth + 1)) out.push(node)
+            }
+          }
+          return out
+        }
+        const list = renderTree(rows, 0)
         return h(
           'div',
           { className: 'rs-sf-list' },
@@ -4259,7 +4364,8 @@ window.__ModuleLoader__.load({
         searchBar,
         toolbar,
         nameBar,
-        error === null ? null : h('div', { className: 'rs-sf-err' }, error),
+        notice === null ? null : h('div', { className: 'rs-sf-notice' }, notice),
+          error === null ? null : h('div', { className: 'rs-sf-err' }, error),
         body,
         dropping ? h('div', { className: 'rs-sf-drop' }, tr('松开即可上传到当前目录')) : null,
         menuNode,
@@ -4295,6 +4401,33 @@ window.__ModuleLoader__.load({
      * outcome must not depend on which bundle happens to load first.
      */
     const FILES_CLAIM_DELAY_MS = 250
+    /** The plugin ctx, captured in apply(); the composer bridge needs it. */
+    let appCtx = null
+
+    /**
+     * Append a reference to the session's composer draft — the same "put this
+     * file in the prompt" gesture better-sidebar offers. Returns false when the
+     * host exposes no usable composer, so the caller can fall back to clipboard.
+     */
+    function composerInsert(sessionId, text) {
+      const ctx = appCtx
+      if (ctx === null || ctx === undefined) return false
+      try {
+        const scoped = typeof ctx.sessions?.scope === 'function' ? ctx.sessions.scope(sessionId) : undefined
+        const conversation = typeof ctx.get === 'function' ? ctx.get('conversation') : undefined
+        if (scoped === undefined || conversation === undefined) return false
+        const input = conversation.input.for(scoped)
+        const snapshot = input.state.getSnapshot()
+        const draft = typeof snapshot.draft === 'string' ? snapshot.draft : ''
+        const gap = draft === '' || /\s$/.test(draft) ? '' : ' '
+        input.setDraft(draft + gap + text + ' ')
+        return true
+      } catch (error) {
+        console.warn('[dsh-remote-suite] 无法写入输入框:', error)
+        return false
+      }
+    }
+
 
     /** Whether better-sidebar's client half is loaded (`provide("betterSidebar")`). */
     function betterSidebarLoaded(ctx) {
@@ -4359,7 +4492,11 @@ window.__ModuleLoader__.load({
       "已修改": "Unsaved",
       "这个目录里没有可以下载的文件": "This folder has nothing to download",
       "重命名": "Rename",
-      "浏览工作区文件树，点开即预览或编辑": "Browse the workspace files; open one to preview or edit it."
+      "浏览工作区文件树，点开即预览或编辑": "Browse the workspace files; open one to preview or edit it.",
+      "已把路径加入输入框": "Added the path to the prompt",
+      "已复制路径": "Copied the path",
+      "无法写入输入框": "Could not reach the prompt",
+      "把路径加入输入框": "Put this path in the prompt"
     }
 
     /** The DSH locale service, attached by attachLocale() from apply(). */
@@ -4539,6 +4676,7 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
+      appCtx = ctx
       if (ctx.slots === undefined || ctx.slots === null) {
         console.error('dsh-remote-suite: this DSH has no slots service; the remote panel stays off')
         return
