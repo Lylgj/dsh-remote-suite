@@ -45,7 +45,7 @@ const ctx = {
 const dispose = apply(ctx, {})
 assert.equal(name, 'remote-suite')
 assert.equal(registered.length, 1, 'apply must register exactly one tool')
-assert.equal(routes.length, 15, 'apply must register the JSON API, the assets, our file routes and the better-sidebar aliases')
+assert.equal(routes.length, 16, 'apply must register the JSON API, the assets, our file routes and the better-sidebar aliases')
 const apiRoute = routes.find((route) => route.path === '/remote-suite/api')
 assert.ok(apiRoute !== undefined, 'the JSON API route must be mounted')
 assert.equal(typeof apiRoute.handler, 'function')
@@ -163,7 +163,7 @@ check('local read/write/stat/list')
 // too — and without the header only this plugin's own page can attach.
 const compatTreeRoute = routes.find((route) => route.kind === 'exact' && route.path === '/sidebar/api/fs.tree')
 assert.ok(compatTreeRoute !== undefined, "the file API must also answer on better-sidebar's own path")
-assert.equal(routes.filter((route) => route.kind === 'exact' && route.path.startsWith('/sidebar/')).length, 12)
+assert.equal(routes.filter((route) => route.kind === 'exact' && route.path.startsWith('/sidebar/')).length, 13)
 async function postCompat(route, payload, headers = {}) {
   const req = Readable.from([JSON.stringify(payload)])
   req.method = 'POST'
