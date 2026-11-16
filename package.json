@@ -1,6 +1,6 @@
 {
   "name": "@lylgj/dsh-remote-suite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "WSL, SSH, Docker and remote-daemon workspaces in one DeepSeek Harness plugin: one Backend seam, one remote workbench, one `remote` tool.",
   "type": "module",
   "main": "index.js",
