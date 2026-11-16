@@ -228,7 +228,11 @@ export function apply(ctx, config = {}) {
           })(),
         }
         try {
-          if (req.headers[CLIENT_HEADER] !== '1') {
+          // The JSON API and writes must carry our client header. `/file` is
+          // fetched by the img/audio tags of the panel, which cannot set one, so
+          // that route falls back to a same-origin check instead — anything else
+          // still has to prove it is our page.
+          if (req.headers[CLIENT_HEADER] !== '1' && (rest !== '/file' || !sameOrigin(req))) {
             sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
             return
           }

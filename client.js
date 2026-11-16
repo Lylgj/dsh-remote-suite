@@ -3213,6 +3213,18 @@ window.__ModuleLoader__.load({
       return (size / (1024 * 1024)).toFixed(1) + ' MB'
     }
 
+    // Empty query values would reach the host as `cwd=` and be mistaken for a
+    // path, so anything missing is dropped instead of serialized.
+    function sidebarQuery(params) {
+      const query = new URLSearchParams()
+      for (const key of Object.keys(params)) {
+        const value = params[key]
+        if (value === undefined || value === null || value === '') continue
+        query.set(key, String(value))
+      }
+      return query.toString()
+    }
+
     function filesErrorText(error) {
       if (error === null || error === undefined) return ''
       return typeof error.message === 'string' && error.message !== '' ? error.message : String(error)
@@ -3313,12 +3325,12 @@ window.__ModuleLoader__.load({
         const url =
           SIDEBAR_BASE +
           '/write?' +
-          new URLSearchParams({
+          sidebarQuery({
             sessionId,
             path: doc.path,
-            expectedMtimeMs: String(doc.mtimeMs || 0),
-            cwd: cwd === undefined ? '' : cwd,
-          }).toString()
+            expectedMtimeMs: doc.mtimeMs || 0,
+            cwd,
+          })
         guarded(
           fetch(url, {
             method: 'POST',
@@ -3484,7 +3496,7 @@ window.__ModuleLoader__.load({
             const url =
               SIDEBAR_BASE +
               '/file?' +
-              new URLSearchParams({ sessionId, path: doc.path, cwd: cwd === undefined ? '' : cwd }).toString()
+              sidebarQuery({ sessionId, path: doc.path, cwd })
             return h(
               'div',
               { className: 'rs-sf-editor' },
