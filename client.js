@@ -3410,8 +3410,10 @@ window.__ModuleLoader__.load({
           'button',
           {
             className: 'rs-sf-btn',
-            title: '上一级',
+            title: dir === root ? '已经是工作区根目录' : '上一级',
+            disabled: dir === '' || dir === root,
             onClick: () => {
+              if (dir === '' || dir === root) return
               setHits(null)
               guarded(load(filesParent(dir)))
             },

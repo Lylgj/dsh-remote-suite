@@ -31,11 +31,19 @@ await writeFile(join(remoteRoot, 'r.txt'), 'remote needle\n', 'utf8')
 await mkdir(mirrorDir, { recursive: true })
 await writeFile(join(mirrorDir, '.dsh-remote.json'), JSON.stringify({ targetId: 'ssh:demo', path: REMOTE_ROOT }), 'utf8')
 
+// A workspace saved with a `~` path. The tree must come back absolute: a
+// `~`-rooted path cannot be joined or compared, so every later navigation
+// would be rejected as "outside this workspace".
+const HOME_ROOT = '/home/demo/project'
+const homeMirror = join(mirrors, 'ssh-home-abcdef', 'ws-home')
+await mkdir(homeMirror, { recursive: true })
+await writeFile(join(homeMirror, '.dsh-remote.json'), JSON.stringify({ targetId: 'ssh:home', path: '~/project' }), 'utf8')
+
 /** Map one advertised POSIX path onto the temp directory that stands for it. */
-function remotePath(value) {
+function remotePath(value, base = REMOTE_ROOT) {
   const normalized = String(value).replace(/\\/g, '/').replace(/\/+$/, '')
-  if (normalized !== REMOTE_ROOT && !normalized.startsWith(`${REMOTE_ROOT}/`)) throw new Error(`outside remote root: ${value}`)
-  return join(remoteRoot, normalized.slice(REMOTE_ROOT.length))
+  if (normalized !== base && !normalized.startsWith(`${base}/`)) throw new Error(`outside remote root: ${value}`)
+  return join(remoteRoot, normalized.slice(base.length))
 }
 
 const remoteBackend = {
@@ -94,15 +102,45 @@ const remoteBackend = {
   },
 }
 
+/** The same content addressed from `$HOME/project`, to exercise `~` markers. */
+function rebase(value) {
+  const normalized = String(value).replace(/\\/g, '/')
+  return REMOTE_ROOT + normalized.slice(HOME_ROOT.length)
+}
+
+const homeBackend = {
+  async home() {
+    return '/home/demo'
+  },
+  stat: ({ path }) => remoteBackend.stat({ path: rebase(path) }),
+  list: ({ path }) => remoteBackend.list({ path: rebase(path) }),
+  write: ({ path, data }) => remoteBackend.write({ path: rebase(path), data }),
+  mkdir: ({ path }) => remoteBackend.mkdir({ path: rebase(path) }),
+  rename: ({ from, to }) => remoteBackend.rename({ from: rebase(from), to: rebase(to) }),
+  remove: ({ path }) => remoteBackend.remove({ path: rebase(path) }),
+  async exec({ command }) {
+    if (command === 'printf %s "$HOME"') {
+      return { stdout: '/home/demo', stderr: '', exitCode: 0, timedOut: false, truncated: false }
+    }
+    return remoteBackend.exec({ command: command.replaceAll(HOME_ROOT, REMOTE_ROOT) })
+  },
+}
+
 const fs = createSidebarFs({
   registry: {
     async backend(id) {
-      if (id !== 'ssh:demo') throw new Error(`unknown target ${id}`)
-      return remoteBackend
+      if (id === 'ssh:demo') return remoteBackend
+      if (id === 'ssh:home') return homeBackend
+      throw new Error(`unknown target ${id}`)
     },
   },
   mirrorsDir: mirrors,
-  sessionCwd: async (sessionId) => (sessionId === 's-remote' ? mirrorDir : localRoot),
+  sessionCwd: async (sessionId) =>
+    sessionId === 's-remote'
+      ? mirrorDir
+      : sessionId === 's-home'
+        ? homeMirror
+        : localRoot,
 })
 
 // --- local -----------------------------------------------------------------
@@ -179,6 +217,22 @@ await assert.rejects(fs.methods['fs.mkdir']({ sessionId: 's-local', path: localR
 const remoteTree = await fs.methods['fs.tree']({ sessionId: 's-remote' })
 assert.equal(remoteTree.path, REMOTE_ROOT)
 assert.deepEqual(remoteTree.entries.map((entry) => entry.name), ['sub', 'r.txt'])
+
+// A `~`-rooted marker is expanded against the remote home before anything is
+// compared, so the returned paths are absolute and the next call still works.
+const homeTree = await fs.methods['fs.tree']({ sessionId: 's-home' })
+assert.equal(homeTree.path, HOME_ROOT)
+assert.deepEqual(homeTree.entries.map((entry) => entry.name), ['sub', 'r.txt'])
+assert.deepEqual(
+  homeTree.entries.map((entry) => entry.path),
+  [`${HOME_ROOT}/sub`, `${HOME_ROOT}/r.txt`],
+)
+const homeChild = await fs.methods['fs.tree']({ sessionId: 's-home', path: `${HOME_ROOT}/sub` })
+assert.equal(homeChild.entries.length, 0)
+await assert.rejects(fs.methods['fs.tree']({ sessionId: 's-home', path: '/home/demo' }), (error) => {
+  assert.equal(error.code, 'bad-request')
+  return true
+})
 
 const remoteText = await fs.methods['fs.read']({ sessionId: 's-remote', path: `${REMOTE_ROOT}/r.txt` })
 assert.equal(remoteText.kind, 'text')
