@@ -1,115 +1,109 @@
 # dsh-remote-suite
 
-[![npm](https://img.shields.io/npm/v/@lylgj/dsh-remote-suite?color=6366f1)](https://www.npmjs.com/package/@lylgj/dsh-remote-suite)
-[![license](https://img.shields.io/npm/l/@lylgj/dsh-remote-suite?color=3b82f6)](LICENSE)
+简体中文 | [English](./README.en.md)
 
-<img src="docs/assets/banner.png" alt="dsh-remote-suite：WSL、SSH、Docker 与远程守护进程，一个工作区列表、一个 remote 工具" width="100%">
+[![npm](https://img.shields.io/npm/v/@lylgj/dsh-remote-suite?style=flat-square)](https://www.npmjs.com/package/@lylgj/dsh-remote-suite)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的远程工作区插件：把**本机、WSL 发行版、
-SSH 主机、Docker 容器**收进同一个「添加工作区」对话框，并用**一个 `remote` 工具**统一操作它们——
-同一套参数，换目标不用换工具。
+<img src="docs/assets/banner.png" alt="dsh-remote-suite" width="100%">
+
+**在 DeepSeek Harness 中统一使用本机、WSL、SSH 和 Docker 工作区。** 浏览文件、编辑代码、打开终端，让 Agent 通过一个 `remote` 工具执行命令。
+
+## 界面预览
+
+<p>
+  <img src="docs/assets/screenshots/workbench-dark.png" alt="远程工作台——深色主题" width="49%">
+  <img src="docs/assets/screenshots/workbench-light.png" alt="远程工作台——浅色主题" width="49%">
+</p>
+<p>
+  <img src="docs/assets/screenshots/local-workspace.png" alt="本机工作区" width="32%">
+  <img src="docs/assets/screenshots/ssh-workspace.png" alt="SSH 工作区" width="32%">
+  <img src="docs/assets/screenshots/ssh-new-host.png" alt="添加 SSH 主机" width="32%">
+</p>
 
 ## 功能
 
-- **四类工作区**：官方「＋ 添加工作区」对话框里多出 本机 / WSL / Docker / 远程 SSH 四个标签页；
-  选好目录后就是一个普通工作区，DSH 自带的文件树、终端与 agent 都能照常使用。
-  **Docker 工作区在容器运行时会直接指向容器里的真实文件**（Docker Desktop 的 9p 路径，
-  和 WSL 工作区一样开箱可用，不经过镜像）；容器停止时自动退回本地镜像目录。
-- **「远程工作台」**：一个 mini VS Code 形态的整屏工作台——目标切换器 + **远端真文件树**（右键新建 /
-  重命名 / 删除）+ 多页签编辑器（行号、语法高亮、未保存确认）+ 进容器的终端（**配色跟随 DSH 主题**）+ 端口转发。
-  入口是左侧栏的「远程」条目（accent 色调的终端图标；栏位宽时才展开成带「远程」字样的圆点胶囊），或全局快捷键 `Ctrl + \``（`⌘ + \``）。
-  Docker / SSH 工作区也能用这块工作台：它的
-  `tree` / `read` / `write` / `mkdir` / `rename` / `remove` 全部经 API 直接在远端执行（Docker 走
-  `docker exec`），不做本地镜像。SSH 工作区在 DSH 里打开的是空镜像目录，看远端真文件就用这块工作台。
-- **右侧栏「工作区文件」**：DSH 右侧栏的文件面板对**本机、WSL、SSH、Docker** 一视同仁——
-  列表、打开、编辑、保存、新建、改名、删除、搜索都直接落在工作区真正的那一侧，
-  SSH / Docker 不再是空镜像目录。带行号与高亮编辑、`Ctrl+F` 查找、实时刷新（`fs-watch`）、
-  上传/拖拽、单文件下载与目录打 zip、右键菜单、多选删除、大文件分页。接口形状与
-  `dsh-better-sidebar` 相同（`fs.tree` / `fs.read` / `fs.readPage` / `fs.search` / `fs.rename` /
-  `fs.mkdir` / `fs.createFile` / `fs.remove`，外加 `/write`、`/file`、`/upload`、`ws/fs-watch`），
-  同时挂在本插件自己的 `/remote-suite/sidebar` 和它的 `/sidebar/api/*` 下：
-  **装了 dsh-better-sidebar 就用它的面板、数据来自本插件；没装就用本插件自带的面板**。
-  面板文案跟随 DSH 界面语言，中文界面用中文、英文界面用英文。
-- **一个工具管全部**：`remote` 有 22 个 action——执行命令、读 / 写 / 改文件、`mkdir` / `rename` /
-  `remove`、`grep`、`glob`、列目录、保存工作区、镜像同步——目标从 WSL 换成 Docker 或 SSH，参数写法不变。
-- **远程 SSH**：主机直接读 `~/.ssh/config`，也能在对话框里新增；别名可以用中文；密钥、ssh-agent、
-  密码三种认证都支持，密码单独存 `secrets.json`（0600，从不回显）。
-- **多跳登录**：`ProxyJump` 支持任意跳数，别名或 `user@host:port` 都行。
-- **常驻会话**：`daemon:<别名>` 让 `cd`、`export`、shell 函数跨命令保留——顺手可以在远端起一个
-  `dsh web`。
-- **Docker**：只依赖 `docker` CLI，Docker Desktop、`DOCKER_HOST`、`podman` / `nerdctl` 都能用；
-  在 Docker Desktop 上，容器运行中的工作区直接落在容器真文件（Windows 侧
-  `\\wsl.localhost\docker-desktop\...\overlayfs\<容器 Id>`）；工作区里的 `.dsh-docker.json` 标记让
-  `@lylgj/dsh-terminal` 打开终端时直接 `docker exec -it` 进容器。
-- **WSL**：工作区落在 `\\wsl.localhost\<发行版>\<路径>`，走 DSH 原生文件树，不经过镜像。
-- **镜像同步**：把远端目录拉到本地一份，供桌面编辑器、搜索和 `git` 使用；32 KB 分块传输，远端不需要
-  `tar` / `rsync`，二进制文件完好。
-
-## 界面
-
-<p>
-  <img src="docs/assets/screenshots/workbench-dark.png" alt="远程工作台：深色主题，左侧分组侧栏 + 多页签编辑器（行号与语法高亮）+ 常驻终端" width="49%">
-  <img src="docs/assets/screenshots/workbench-light.png" alt="远程工作台：浅色主题，随宿主配色自动切换" width="49%">
-</p>
-
-<p>
-  <img src="docs/assets/screenshots/local-workspace.png" alt="本机工作区：盘符切换与目录浏览" width="32%">
-  <img src="docs/assets/screenshots/ssh-workspace.png" alt="远程 SSH 工作区：选择目标、新增与删除主机" width="32%">
-  <img src="docs/assets/screenshots/ssh-new-host.png" alt="新增 SSH 主机：别名可以用中文，私钥可浏览选择" width="32%">
-</p>
+- **统一选择工作区**：在同一个入口中选择本机目录、WSL 发行版、Docker 容器或 SSH 主机。
+- **工作区文件**：展开目录、预览和编辑文件、保存、新建、重命名、删除、搜索、上传下载；支持语法高亮、多选、右键菜单和大文件分页查看。
+- **远程工作台**：文件树、多页签编辑器、终端和端口转发集中在一个工作台中，支持浅色和深色主题。
+- **Agent 工具**：通过 `remote` 跨目标执行命令、读写文件、搜索和同步本地镜像。
+- **SSH 连接**：使用已有 SSH 配置或在界面中添加主机，支持私钥、ssh-agent、密码和 ProxyJump。
+- **常驻会话与镜像**：daemon 目标保留 shell 状态；按需将远端目录拉到本地，或把本地改动推回远端。
 
 ## 安装
 
-需要 DeepSeek Harness `>= 0.2.1-rc.2`。
+需要 **DSH 0.2.2-rc.1+**；运行插件的 Node.js 需为 **20+**（桌面版通常由应用提供，无需单独安装）。使用 WSL、Docker、SSH 功能前，需准备对应环境和访问权限。
 
-插件的 npm 包名是 `@lylgj/dsh-remote-suite`；下面两种装法都是让 DSH 从 npm 源拉取它。装插件要走 DSH 自己的流程（界面或 `dsh plugin`），直接 `npm install` 不会被识别成插件。
+### DSH 桌面版
 
-**在界面里装（推荐）**
+打开 **插件 → 添加插件**，输入包名并安装，然后完全退出并重新打开 DSH：
 
-左侧栏 →「插件」→「添加插件」，在「包名或地址」里填：
-
-```
+```text
 @lylgj/dsh-remote-suite
 ```
 
-点「安装」，装完**完全重启** DeepSeek Harness（不是刷新页面）。之后每个 agent preset 会拿到 `remote`
-工具，「添加工作区」换成插件的四个标签页。
+### dsh web
 
-**用命令行装**
-
-```powershell
-dsh plugin --profile desktop add @lylgj/dsh-remote-suite
+```sh
+dsh plugin --profile web add @lylgj/dsh-remote-suite
 ```
 
-npm 源不通时可以直接从仓库装（内容相同，但插件页不会显示版本更新）：
+将 `web` 换成实际使用的 profile 名称，然后重启对应 DSH 实例。桌面版请通过应用内的插件管理器安装。
 
-```powershell
-dsh plugin --profile desktop add github:Lylgj/dsh-remote-suite
+需要仓库中的最新改动时，也可在 **添加插件** 中输入：
+
+```text
+https://github.com/Lylgj/dsh-remote-suite
 ```
 
-GitHub 地址不走 npm 源，需要本机能直连 github.com，或给 git / 终端配好代理。
+npm 发布版与 GitHub 默认分支可能包含不同版本。
 
-**从源码装（自己改代码时）**
+## 快速开始
 
-```powershell
-dsh plugin --profile desktop add "D:\你的路径\dsh-remote-suite"
+1. 点击工作区列表旁的 **＋**，选择本机、WSL、Docker 或远程 SSH。
+2. 选用已有 SSH 主机，或填写主机地址、用户及认证信息添加主机。
+3. 选择目录并打开工作区。在右侧栏 **文件** 中浏览和编辑，或点击左侧栏 **远程** 打开工作台。
+4. 在对话中让 Agent 操作目标：
+
+```text
+列出可用的远程目标。
+在 ssh:my-server 的 /srv/app 目录执行 npm test。
+查找这个工作区中包含 TODO 的文件。
 ```
 
-本地目录必须写绝对路径。这种方式装进去的是目录副本，改完源码要重装一次（或把文件同步到 profile 的
-`node_modules\@lylgj\dsh-remote-suite`）再重启。
+## 使用提示
 
-以前装过同类插件的话先在「插件」页卸载——它们会注册同名工具或抢占侧栏：
-`dsh-wsl-tool`、`dsh-wsl-workspace`、`@zhangfengshun/dsh-remote-ssh`。
+- SSH 文件访问由插件提供，不是系统级磁盘挂载。其他只读取本地文件的软件需要先同步镜像。
+- SSH 认证不支持交互输入一次性验证码。
+- Docker 文件系统路径直连依赖 Windows 上的 Docker Desktop；其他环境使用镜像和远端文件操作。
+- 保存的密码是本机凭据，并非加密保险库。请保护 DSH 数据目录及备份的访问权限。
+- 删除文件、覆盖写入和镜像 push 会改变真实目标，请先确认目标和路径。
 
-## 快速上手
+目标参数、认证配置、镜像、端口转发与排错详见 [使用指南（中文）](./docs/使用指南.md)。
 
-1. 点工作区列表旁的 `＋`，选 **远程 SSH** → **＋ 新增**，填别名、主机、用户，选私钥文件，点「保存并选用」。
-2. 浏览到远端目录，选中后打开——工作区就建好了。
-3. 在会话里说「在服务器上跑一下测试」，agent 会自己调
-   `remote action=exec target=ssh:云服务器 command="npm test"`。
+## 常见问题
 
-字段细节、`remote` 每个 action 的参数、认证顺序、镜像与排错，见 **[使用指南](docs/使用指南.md)**。
+**安装后没有出现入口？**
+确认安装到了当前使用的 profile，完全退出 DSH 后重新打开；桌面版优先使用应用内安装。
+
+**SSH 登录成功，但其他软件看不到远端文件？**
+插件文件面板直接访问远端，不会创建系统级挂载；需要本地文件的软件请先同步镜像。
+
+**npm 安装后与仓库截图或功能不同？**
+npm 对应已发布版本，GitHub 默认分支可能包含尚未发布的改动，请先核对版本与安装来源。
+
+## 卸载
+
+在 DSH 桌面版的 **插件** 页面找到本插件，选择 **卸载**，然后完全退出并重新打开 DSH。
+
+使用 CLI 时，在安装插件的同一个 profile 中执行：
+
+```sh
+dsh plugin --profile web remove @lylgj/dsh-remote-suite
+```
+
+将 `web` 换成实际 profile 名称，然后重启对应 DSH 实例。
 
 ## 许可
 
-MIT
+[MIT](./LICENSE)。内置组件的版权与许可见 [第三方声明](./THIRD-PARTY-NOTICES.md)。
