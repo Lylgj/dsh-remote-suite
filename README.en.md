@@ -1,109 +1,215 @@
-# dsh-remote-suite
-
-[简体中文](./README.md) | English
-
-[![npm](https://img.shields.io/npm/v/@lylgj/dsh-remote-suite?style=flat-square)](https://www.npmjs.com/package/@lylgj/dsh-remote-suite)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
+<div align="center">
 
 <img src="docs/assets/banner.png" alt="dsh-remote-suite" width="100%">
 
-**Local, WSL, SSH and Docker workspaces in DeepSeek Harness.** Browse files, edit code, open terminals and let your agent run commands through one `remote` tool.
+# 🧭 dsh-remote-suite
 
-## Screenshots
+**Local, WSL, SSH and Docker workspaces in one list.**
 
-<p>
-  <img src="docs/assets/screenshots/workbench-dark.png" alt="Remote workbench — dark theme" width="49%">
-  <img src="docs/assets/screenshots/workbench-light.png" alt="Remote workbench — light theme" width="49%">
-</p>
-<p>
-  <img src="docs/assets/screenshots/local-workspace.png" alt="Local workspace" width="32%">
-  <img src="docs/assets/screenshots/ssh-workspace.png" alt="SSH workspace" width="32%">
-  <img src="docs/assets/screenshots/ssh-new-host.png" alt="Add an SSH host" width="32%">
-</p>
+Adding a workspace in DeepSeek Harness gains four tabs: local, WSL, Docker and remote SSH. Once a directory is picked it is an ordinary
+workspace — browse and edit files in the right sidebar, open a terminal, and let the agent drive every target through one `remote` tool.
 
-## Features
+[![npm version](https://img.shields.io/npm/v/@lylgj/dsh-remote-suite?style=flat-square)](https://www.npmjs.com/package/@lylgj/dsh-remote-suite)
+[![npm downloads](https://img.shields.io/npm/dm/@lylgj/dsh-remote-suite?style=flat-square)](https://www.npmjs.com/package/@lylgj/dsh-remote-suite)
+[![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-8A2BE2?style=flat-square)](https://github.com/topics/dsh-plugin)
+[![node](https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square)](https://nodejs.org/)
 
-- **One workspace picker** — select a local directory, WSL distribution, Docker container or SSH host.
-- **Workspace files** — expand folders, preview and edit files, save, create, rename, delete, search, upload and download. Includes syntax highlighting, multi-selection, context menus and paged viewing for large files.
-- **Remote workbench** — a file tree, tabbed editor, terminal and port forwarding in one workspace, with light and dark themes.
-- **Agent tools** — use `remote` to execute commands, read and write files, search and synchronize local mirrors across targets.
-- **SSH connections** — use existing SSH config or add hosts in the UI; supports private keys, ssh-agent, passwords and ProxyJump.
-- **Persistent sessions and mirrors** — daemon targets preserve shell state; pull remote directories locally or push local changes back when needed.
-
-## Installation
-
-Requires **DSH 0.2.2-rc.1+** running on **Node.js 20+**. Desktop normally provides its own runtime; a separate Node.js installation is not usually needed. WSL, Docker and SSH features require their respective environments and access permissions.
-
-### DSH Desktop
-
-Open **Plugins → Add plugin**, enter the package name, install, then fully restart DSH:
-
-```text
-@lylgj/dsh-remote-suite
-```
-
-### dsh web
+[简体中文](README.md) · [English](README.en.md)
 
 ```sh
 dsh plugin --profile web add @lylgj/dsh-remote-suite
 ```
 
-Replace `web` with your actual profile name and restart that DSH instance. Desktop users should install through the app's plugin manager.
+</div>
 
-For the latest repository changes, you can also enter this address in **Add plugin**:
+> **Repository**: [Lylgj/dsh-remote-suite](https://github.com/Lylgj/dsh-remote-suite) · **npm**: [@lylgj/dsh-remote-suite](https://www.npmjs.com/package/@lylgj/dsh-remote-suite) · **License**: MIT
+
+## Interface
+
+<p>
+  <img src="docs/assets/screenshots/workbench-dark.png" alt="Remote workbench, dark theme" width="49%">
+  <img src="docs/assets/screenshots/workbench-light.png" alt="Remote workbench, light theme" width="49%">
+</p>
+<p>
+  <img src="docs/assets/screenshots/local-workspace.png" alt="Local workspace" width="32%">
+  <img src="docs/assets/screenshots/ssh-workspace.png" alt="SSH workspace" width="32%">
+  <img src="docs/assets/screenshots/ssh-new-host.png" alt="Adding an SSH host" width="32%">
+</p>
+
+## Installation
+
+Requires **DSH 0.2.2-rc.1 or newer**. The plugin runs on Node.js 20+, which the desktop app already provides.
+WSL, Docker and SSH each need their own environment and access rights.
+
+### 1. Desktop app (recommended)
+
+Open **Plugins → Add plugin**, enter the package name, install, then **fully quit DSH and start it again** (reloading the page is not enough):
 
 ```text
-https://github.com/Lylgj/dsh-remote-suite
+@lylgj/dsh-remote-suite
 ```
 
-The npm release and GitHub default branch may contain different versions.
+### 2. Command line (dsh web or a custom profile)
 
-## Quick start
+```sh
+dsh plugin --profile web add @lylgj/dsh-remote-suite
+```
 
-1. Click **＋** beside the workspace list and choose Local, WSL, Docker or SSH.
-2. Select an existing SSH host or add one with its hostname, user and authentication details.
-3. Choose a directory and open the workspace. Use **Files** in the right sidebar to browse and edit, or **Remote** in the left sidebar to open the workbench.
-4. Ask your agent to work on the target:
+Replace `web` with the profile you actually use, then restart that DSH instance.
+
+### 3. Latest code from GitHub
+
+Use the repository URL in **Add plugin**, or run:
+
+```sh
+dsh plugin --profile web add github:Lylgj/dsh-remote-suite
+```
+
+GitHub addresses bypass the npm registry and need a working connection or proxy. The npm release and the default branch may differ.
+
+### 4. From source
+
+```sh
+git clone https://github.com/Lylgj/dsh-remote-suite.git
+dsh plugin --profile web add "file:D:/path/to/dsh-remote-suite"
+```
+
+The local path must be absolute. Installation copies the directory, so reinstall after changing the source.
+
+### Upgrade and uninstall
+
+```sh
+dsh plugin --profile web add @lylgj/dsh-remote-suite@latest   # upgrade
+dsh plugin --profile web remove @lylgj/dsh-remote-suite       # uninstall
+```
+
+The desktop app can also check for updates or uninstall from the **Plugins** page.
+
+## First run
+
+1. Click **＋** next to the workspace list and pick a target type.
+2. Fill in the fields for that type:
+
+| Target | Fields |
+| --- | --- |
+| Local | Directory (and optionally a drive) |
+| WSL | Distribution + directory |
+| Docker | Container (running ones are listed) + directory |
+| Remote SSH | An existing host, or add one: alias, host, port, user, key / password |
+
+3. Pick a directory and open the workspace. The sidebar's **Files** tab is the remote directory; **Remote** in the left rail opens the workbench.
+4. Or just talk to the agent:
 
 ```text
 List the available remote targets.
 Run npm test in /srv/app on ssh:my-server.
-Find files containing TODO in this workspace.
+Find the files in this workspace that contain TODO.
 ```
 
-## Notes
+## Files in the sidebar
 
-- SSH file access is provided by the plugin, not a system-wide mounted drive. Use mirror synchronization for applications that only read local files.
-- SSH authentication does not support interactive one-time-code prompts.
-- Direct Docker filesystem paths depend on Docker Desktop on Windows; other environments use mirrors and remote file operations.
-- Stored passwords are local credentials, not an encrypted vault. Protect the DSH data directory and its backups.
-- File deletion, overwrites and mirror pushes affect the real target. Confirm the target and path before proceeding.
+The built-in "workspace files" panel in the right sidebar is taken over by this plugin, so local, WSL, SSH and Docker workspaces share one UI.
 
-For target parameters, authentication, mirrors, port forwarding and troubleshooting, see the [user guide (Chinese)](./docs/使用指南.md).
+- **Browse**: directories expand inline, files are tinted by type; clicking a text file opens it for editing.
+- **Edit**: syntax highlighting and line numbers, `Ctrl/Cmd+S` to save (with `expectedMtimeMs` conflict detection), `Ctrl/Cmd+F` to find.
+- **Manage**: create files and folders, rename, delete, multi-select and a context menu.
+- **Transfer**: drag or pick files to upload; download single files, or a directory as a zip.
+- **Large files**: text above 5 MiB is read in 128 KiB pages.
+- **Live refresh**: the listing reloads when the directory changes.
+
+The interface is mounted at both `/remote-suite/sidebar` and `/sidebar/api/*`, with local and remote paths served by the same methods.
+
+## Remote workbench
+
+Open it from **Remote** in the left rail; the light/dark theme follows the interface:
+
+- File tree, tabbed editor, embedded terminal
+- Port forwarding (create, list, close)
+- Mirror sync (pull, push, `dryRun`, `force`)
+- Target and workspace management
+
+## The `remote` tool
+
+The agent drives every target through one tool with 22 actions:
+
+| Group | Actions |
+| --- | --- |
+| Targets and workspaces | `targets`, `workspaces`, `workspace-add`, `workspace-remove` |
+| Execution | `exec`, `probe` |
+| Files | `read`, `write`, `edit`, `stat`, `list`, `mkdir`, `rename`, `remove` |
+| Search | `grep`, `glob` |
+| Credentials | `secret-set`, `secret-remove` |
+| Mirrors | `mirrors`, `mirror-add`, `mirror-remove`, `mirror-sync` |
+
+Defaults: `exec` times out after 120 seconds and truncates output at 64 KB; `grep` returns at most 100 matches and `list` at most 500 entries; `edit` requires `old` to match exactly once.
+
+## SSH
+
+- Reuses hosts from `~/.ssh/config`, or add new ones in the UI (aliases may be any language).
+- Authentication tries key (with passphrase) → ssh-agent → password.
+- ProxyJump chains are supported; host records live in the DSH data directory.
+- A password can come from an environment variable instead of the config file.
+
+## Docker
+
+- Running containers are listed and picked directly.
+- With Docker Desktop, the workspace uses the container's real file paths, so what you see matches the container.
+- When a container stops, the workspace falls back to a local mirror and works again once it starts.
+
+## Mirror sync
+
+A remote directory can be mapped to a local copy at `$DSH_HOME/remote-suite/mirrors/<target>/<name>`:
+
+- `mirror-sync` defaults to `pull`; `push` refuses to overwrite files that are newer on the remote unless `force` is set.
+- Transfers use 32 KiB chunks, so large files are not read into memory at once; files of equal size whose mtimes differ by less than 2 seconds count as unchanged.
+- `dryRun` reports differences without writing.
+
+## Port forwarding
+
+Create a local-to-remote forward from the workbench or the API — handy for reaching a web service running on the remote host; the list shows active forwards and can close them at any time.
+
+## Configuration and data
+
+| Location | Contents |
+| --- | --- |
+| `$DSH_HOME/remote-suite/state.json` | Workspaces, SSH hosts, mirror records |
+| `$DSH_HOME/remote-suite/mirrors/` | Local mirror directories |
+| `$DSH_HOME/remote-suite/debug.log` | Diagnostic log |
+| `~/.ssh/config` | Read and reused; never rewritten |
+
+Changes take effect after reopening the workspace or restarting DSH.
 
 ## FAQ
 
-**The entry is missing after installation.**
-Check that you installed into the profile you are using, then fully quit and reopen DSH. Desktop users should install through the app.
+**No entry after installing?** Check that it went into the profile you are using, then fully quit and reopen DSH.
 
-**SSH works, but another application cannot see remote files.**
-The plugin accesses remote files directly without a system-wide mount. Synchronize a mirror for applications that need local files.
+**Code changes have no effect?** A source install is a copy; install again after editing.
 
-**The npm version differs from the repository screenshots or features.**
-npm contains published releases; the default GitHub branch may include unreleased changes. Check the installed version and source.
+**SSH works, but other apps cannot see the remote files?** The plugin talks to the remote directly and creates no system mount; sync a mirror for apps that need local files.
 
-## Uninstall
+**Why did the shell state vanish?** Every SSH connection starts a new shell; use a daemon target to keep state.
 
-In DSH Desktop, find the plugin on the **Plugins** page, choose **Uninstall**, then fully quit and reopen DSH.
+**Why is search slow?** Search reads each file rather than using an index; narrow the directory for large repositories.
 
-For CLI installations, remove it from the same profile used for installation:
+## Known limits
 
-```sh
-dsh plugin --profile web remove @lylgj/dsh-remote-suite
-```
+- SSH cannot prompt for one-time codes.
+- Stored passwords are local credentials, not an encrypted vault.
+- Real container file paths on Windows depend on Docker Desktop.
+- Directory changes are detected by polling, so rapid writes may appear slightly late.
+- Deleting, overwriting and pushing mirrors all change the real target — verify the path first.
 
-Replace `web` with your actual profile name, then restart that DSH instance.
+## Security
+
+The plugin stores SSH host records and (optionally) passwords on this machine — protect access to the DSH data directory. Remote commands run as your user on the target; destructive actions have no second confirmation, so check the target and path first.
+
+## Versions and compatibility
+
+- DSH `0.2.2-rc.1` and newer; `0.2.2-alpha.3` is incompatible and `0.2.2-rc.2` is unverified.
+- Node.js `20` and newer.
+- Status: best tested on the Windows desktop app; Linux desktop and macOS are untested.
 
 ## License
 
-[MIT](./LICENSE). See [third-party notices](./THIRD-PARTY-NOTICES.md) for bundled components.
+MIT
