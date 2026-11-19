@@ -1,7 +1,7 @@
 {
   "name": "@lylgj/dsh-remote-suite",
-  "version": "0.1.2",
-  "description": "WSL, SSH, Docker and remote-daemon workspaces in one DeepSeek Harness plugin: one Backend seam, one remote workbench, one `remote` tool.",
+  "version": "0.1.3",
+  "description": "本机、WSL、SSH、Docker 和远程守护进程，接到一个工作区列表里：右侧栏能浏览和编辑远端文件，一个 remote 工具走遍所有目标。",
   "type": "module",
   "main": "index.js",
   "author": "Lylgj",
