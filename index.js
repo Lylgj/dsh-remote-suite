@@ -28,6 +28,7 @@ import { createPtyServer } from './lib/pty-server.js'
 import { createPtySpawner } from './lib/pty.js'
 import { createSidebarFs, statusOf, wireError } from './lib/sidebar-fs.js'
 import { dataDir, loadState } from './lib/state.js'
+import * as terminalHost from './lib/terminal-host.js'
 import { createRemoteTool } from './lib/tool-remote.js'
 
 export const name = 'remote-suite'
@@ -367,13 +368,23 @@ export function apply(ctx, config = {}) {
    */
   const mountSidebarCompat = (webServer) => {
     const paths = ['/write', '/upload', '/file', ...Object.keys(sidebarFs.methods).map((method) => `/api/${method}`)]
-    const offs = paths.map((rest) =>
-      webServer.register({
-        kind: 'exact',
-        path: '/sidebar' + rest,
-        handler: (req, res) => serveSidebar(req, res, rest, true),
-      }),
-    )
+    const offs = []
+    for (const rest of paths) {
+      // One path at a time: `@zhangfengshun/dsh-remote-ssh` claims the same exact
+      // `/sidebar/api/*` paths, and the host refuses a duplicate `(kind, path)`
+      // pair. Losing one route must not cost the other eleven.
+      try {
+        offs.push(
+          webServer.register({
+            kind: 'exact',
+            path: '/sidebar' + rest,
+            handler: (req, res) => serveSidebar(req, res, rest, true),
+          }),
+        )
+      } catch (error) {
+        console.warn('remote-suite: the compatibility route /sidebar' + rest + ' is already taken, skipping it', error)
+      }
+    }
     return () => {
       for (const off of offs) {
         try {
@@ -387,16 +398,32 @@ export function apply(ctx, config = {}) {
 
   // `webServer` is optional: a bare CLI host has no routes to serve, and the
   // `remote` tool must keep working there.
+  //
+  // Every mount is guarded on its own: another plugin that already registered one
+  // of these paths (the `/sidebar/api/*` exact routes are shared with
+  // `@zhangfengshun/dsh-remote-ssh`) throws `webserver: duplicate … route`, and
+  // that must cost only that one route — not the PTY, the watch socket and the
+  // whole terminal half that come after it.
   const offWeb = ctx.inject(['webServer'], (scoped) => {
-    try {
-      disposers.push(mountApi(scoped.webServer))
-      disposers.push(mountAssets(scoped.webServer))
-      disposers.push(mountSidebar(scoped.webServer))
-      disposers.push(mountSidebarCompat(scoped.webServer))
+    const mount = (label, run) => {
+      try {
+        const off = run()
+        if (typeof off === 'function') disposers.push(off)
+      } catch (error) {
+        console.error('remote-suite: ' + label + ' could not be mounted', error)
+      }
+    }
+
+    mount('the API routes', () => mountApi(scoped.webServer))
+    mount('the asset routes', () => mountAssets(scoped.webServer))
+    mount('the sidebar routes', () => mountSidebar(scoped.webServer))
+    mount('the better-sidebar compatibility routes', () => mountSidebarCompat(scoped.webServer))
+
+    mount('the PTY server', () => {
       const pty = createPtyServer({ registry, WebSocketServer: loadWebSocketServer() })
-      disposers.push(() => pty.dispose())
-      disposers.push(
-        scoped.webServer.registerUpgrade({
+      let off
+      try {
+        off = scoped.webServer.registerUpgrade({
           path: PTY_PATH,
           handler: (req, socket, head) => {
             trace(req, 'ws')
@@ -411,31 +438,77 @@ export function apply(ctx, config = {}) {
             }
             pty.upgrade(req, socket, head)
           },
-        }),
-      )
-      // The watch socket: same origin fence as the PTY, then our polling watcher.
-      const watch = createFsWatch({ sidebarFs, WebSocketServer: loadWebSocketServer() })
-      disposers.push(() => watch.dispose())
-      const watchUpgrade = (req, socket, head) => {
-        if (!sameOrigin(req)) {
-          try {
-            socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
-          } catch {
-            // Socket already closed.
-          }
-          socket.destroy()
-          return
-        }
-        watch.upgrade(req, socket, head)
+        })
+      } catch (error) {
+        // The path is taken by another plugin: do not leak the PTY server we
+        // just built for a socket nobody can reach.
+        pty.dispose()
+        throw error
       }
-      disposers.push(scoped.webServer.registerUpgrade({ path: SIDEBAR_WATCH_PATH, handler: watchUpgrade }))
-      // better-sidebar's own `/sidebar/ws/fs-watch` socket is deliberately left
-      // alone: one socket has one protocol owner and a second registration
-      // throws inside its apply, which would break that plugin. Its panel
-      // therefore keeps its own (local-only) watcher when both are installed.
+      return () => {
+        try {
+          off()
+        } catch {
+          // Already disposed.
+        }
+        pty.dispose()
+      }
+    })
+
+    // The watch socket: same origin fence as the PTY, then our polling watcher.
+    mount('the file watch socket', () => {
+      const watch = createFsWatch({ sidebarFs, WebSocketServer: loadWebSocketServer() })
+      let off
+      try {
+        off = scoped.webServer.registerUpgrade({
+          path: SIDEBAR_WATCH_PATH,
+          handler: (req, socket, head) => {
+            if (!sameOrigin(req)) {
+              try {
+                socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+              } catch {
+                // Socket already closed.
+              }
+              socket.destroy()
+              return
+            }
+            watch.upgrade(req, socket, head)
+          },
+        })
+      } catch (error) {
+        watch.dispose()
+        throw error
+      }
+      return () => {
+        try {
+          off()
+        } catch {
+          // Already disposed.
+        }
+        watch.dispose()
+      }
+    })
+
+    // The terminal half: its own PTY routes plus the detached helper process that
+    // owns the shells (see lib/terminal-host.js). It registers its own effects, so
+    // disposing the injection above tears it down with the rest.
+    //
+    // The injected scope only carries `webServer`, so hand the terminal half a
+    // small face that borrows the outer context's `effect` (whose disposers this
+    // plugin's own teardown already runs).
+    try {
+      terminalHost.apply({
+        webServer: scoped.webServer,
+        logger: ctx.logger,
+        effect: (fn, label) => (typeof ctx.effect === 'function' ? ctx.effect(fn, label) : fn()),
+      })
     } catch (error) {
-      console.error('remote-suite: mounting routes failed', error)
+      console.error('remote-suite: mounting the terminal routes failed', error)
     }
+    // better-sidebar's own `/sidebar/ws/fs-watch` socket is deliberately left
+    // alone: one socket has one protocol owner and a second registration throws
+    // inside its apply, which would break that plugin. Its panel therefore keeps
+    // its own (local-only) watcher when both are installed.
   })
 
   // A configuration change is a remount, not something a running session

@@ -1268,6 +1268,41 @@ window.__ModuleLoader__.load({
 }
 .rs-sf-menuitem:hover { background: var(--dsh-hover, rgba(127,127,127,0.13)); }
 .rs-sf-menuitem.is-danger { color: #e11d48; }
+
+/* Settings section: takeover switches. */
+.rs-set { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 10px; max-width: 720px; }
+.rs-set-row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px;
+  border: 1px solid color-mix(in srgb, currentColor 9%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, currentColor 3.5%, transparent),
+    color-mix(in srgb, currentColor 1.5%, transparent));
+  transition: border-color 0.16s ease, box-shadow 0.16s ease; }
+.rs-set-row:hover { border-color: color-mix(in srgb, currentColor 18%, transparent);
+  box-shadow: 0 2px 10px rgba(2, 6, 23, 0.06); }
+.rs-set-glyph { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; color: var(--dsh-accent, #6366f1);
+  background: color-mix(in srgb, var(--dsh-accent, #6366f1) 12%, transparent); }
+.rs-set-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 auto; }
+.rs-set-title { font-size: 13.5px; font-weight: 600; letter-spacing: 0.1px; }
+.rs-set-hint { font-size: 12px; line-height: 1.5; opacity: 0.6; }
+.rs-set-state { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; width: fit-content;
+  font-size: 11.5px; padding: 2px 9px 2px 7px; border-radius: 999px; opacity: 0.85;
+  background: color-mix(in srgb, currentColor 6%, transparent); }
+.rs-set-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: 0.5; }
+.rs-set-state.is-on { color: var(--dsh-success, #2fb344); opacity: 1;
+  background: color-mix(in srgb, #2fb344 13%, transparent); }
+.rs-set-state.is-on::before { opacity: 1;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2fb344 18%, transparent); }
+.rs-set-switch { flex: 0 0 auto; width: 44px; height: 24px; padding: 0; border: 0; border-radius: 999px;
+  background: color-mix(in srgb, currentColor 20%, transparent); position: relative; cursor: pointer;
+  transition: background 0.18s ease; }
+.rs-set-switch.is-on { background: var(--dsh-accent, #6366f1); }
+.rs-set-switch:focus-visible { outline: 2px solid color-mix(in srgb, var(--dsh-accent, #6366f1) 55%, transparent);
+  outline-offset: 2px; }
+.rs-set-knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(2, 6, 23, 0.28); transition: transform 0.18s ease; }
+.rs-set-switch.is-on .rs-set-knob { transform: translateX(20px); }
+.rs-set-foot { margin: 0; font-size: 11.5px; opacity: 0.55; }
     `
 
     /**
@@ -4413,12 +4448,6 @@ window.__ModuleLoader__.load({
         }),
       )
     }
-    /**
-     * How long to wait before claiming the `files` kind. The host allows one
-     * `extension` claim per kind, and better-sidebar claims the same one, so the
-     * outcome must not depend on which bundle happens to load first.
-     */
-    const FILES_CLAIM_DELAY_MS = 250
     /** The plugin ctx, captured in apply(); the composer bridge needs it. */
     let appCtx = null
 
@@ -4447,16 +4476,6 @@ window.__ModuleLoader__.load({
     }
 
 
-    /** Whether better-sidebar's client half is loaded (`provide("betterSidebar")`). */
-    function betterSidebarLoaded(ctx) {
-      try {
-        return typeof ctx.get === 'function' && ctx.get('betterSidebar') !== undefined
-      } catch {
-        return false
-      }
-    }
-
-
     /**
      * Copy for the files panel and its sidebar entry.
      *
@@ -4467,6 +4486,64 @@ window.__ModuleLoader__.load({
      * translation falls back to the original text instead of a bare key.
      */
     const EN_COPY = {
+      "当前：dsh-better-sidebar 的面板（数据由本插件提供）": "Now: dsh-better-sidebar's pane (data served by this plugin)",
+      "终端资源加载失败：{detail}\n请确认已刷新页面以加载最新插件。": "The terminal failed to load: {detail}\nReload the page to pick up the latest plugin.",
+      "已粘贴 {count} 个字符": "Pasted {count} characters",
+      "[已为工作区 {cwd} 启动常驻终端；切走后它继续运行]": "[Resident terminal started for {cwd}; it keeps running when you switch away]",
+      "后台终端：{count}": "Terminals: {count}",
+      "已复制 {count} 个字符": "Copied {count} characters",
+      "选择本工作区终端使用的 shell（默认 shell / Windows:cmd / Windows:PowerShell / WSL / SSH）": "Shell used by terminals in this workspace (default shell / Windows:cmd / Windows:PowerShell / WSL / SSH)",
+      "三个开关互相独立、可同时打开；Ctrl+C 只在有选中内容时复制，读取剪贴板需 localhost 或 HTTPS": "The three switches are independent and may all be on; Ctrl+C copies only when something is selected, and reading the clipboard needs localhost or HTTPS",
+      "有选中内容时 Ctrl+C（macOS 上 Cmd+C）复制选中文本；没有选中时仍然发送 ^C 中断命令": "With a selection, Ctrl+C (Cmd+C on macOS) copies it; with nothing selected it still sends ^C to interrupt",
+      "在终端里点右键直接粘贴剪贴板内容（读取剪贴板需要 localhost 或 HTTPS）": "Right-click in the terminal pastes the clipboard directly (reading the clipboard needs localhost or HTTPS)",
+      "当前为浮层：终端盖在 DSH 上。点击改为并排（DSH 让出空间）": "Floating now: the terminal covers DSH. Click to dock side by side (DSH makes room)",
+      "当前为并排：DSH 让出右侧空间。点击改为浮层覆盖": "Docked now: DSH makes room on the right. Click to float over it",
+      "此环境不允许读取剪贴板，请用 Ctrl+V 粘贴": "This environment does not allow reading the clipboard; paste with Ctrl+V",
+      "提示显示在终端面板左下角（不挡输入行右侧）": "Toast at the bottom-left of the panel, clear of the input line",
+      "查看和关闭本环境的后台终端（包含当前终端）": "See and close this environment's background terminals, including the current one",
+      "提示出现在鼠标位置上方，不占用终端画面": "Toast follows the pointer, off the terminal screen",
+      "鼠标松开、选择停稳后自动复制选中文本": "Copies the selection once the mouse is released and the selection settles",
+      "addon-fit.js 加载失败": "addon-fit.js failed to load",
+      "无法连接终端后端，3 秒后重试…": "Cannot reach the terminal backend; retrying in 3 seconds…",
+      "复制失败：浏览器拒绝了剪贴板写入": "Copy failed: the browser refused the clipboard write",
+      "连接已断开，3 秒后自动重连…": "Connection lost; reconnecting in 3 seconds…",
+      "重新连接当前工作区的 PTY": "Reconnect this workspace's PTY",
+      "提示显示在终端面板底部中央": "Toast at the bottom centre of the panel",
+      "xterm.js 加载失败": "xterm.js failed to load",
+      "当前为暗色。点击切换为浅色": "Dark theme. Click for the light one",
+      "当前为浅色。点击切换为暗色": "Light theme. Click for the dark one",
+      "提示显示在工具条下方居中": "Toast centred below the toolbar",
+      "复制/粘贴后不弹任何提示": "No toast after copying or pasting",
+      "收起终端（Ctrl+`）": "Collapse the terminal (Ctrl+`)",
+      "打开终端（Ctrl+`）": "Open the terminal (Ctrl+`)",
+      "清屏（仅当前工作区）": "Clear (this workspace only)",
+      "Ctrl+C 复制": "Ctrl+C copies",
+      "复制/粘贴设置": "Copy and paste settings",
+      "(默认目录)": "(default directory)",
+      "终端启动失败": "The terminal failed to start",
+      "关闭其他终端": "Close other terminals",
+      "拖动调整宽度": "Drag to resize",
+      "选中即复制": "Copy on select",
+      "复制/粘贴": "Copy and paste",
+      "底部居中": "Bottom centre",
+      "底部靠左": "Bottom left",
+      "顶部居中": "Top centre",
+      "跟随鼠标": "Follow the pointer",
+      "关闭提示": "Hide toasts",
+      "右键粘贴": "Right-click pastes",
+      "连接失败": "Connection failed",
+      "连接中…": "Connecting…",
+      "（当前）": " (current)",
+      "提示位置": "Toast position",
+      "已连接": "Connected",
+      "暗色": "Dark",
+      "浅色": "Light",
+      "复制": "Copy",
+      "清屏": "Clear",
+      "重连": "Reconnect",
+      "并排": "Dock",
+      "浮层": "Float",
+      "收起": "Collapse",
       "文件": "Files",
       "保存": "Save",
       "查找": "Find",
@@ -4515,7 +4592,20 @@ window.__ModuleLoader__.load({
       "已复制路径": "Copied the path",
       "无法写入输入框": "Could not reach the prompt",
       "把路径加入输入框": "Put this path in the prompt",
-      "展开或收起": "Expand or collapse"
+      "展开或收起": "Expand or collapse",
+      "终端": "Terminal",
+      "新建终端": "New terminal",
+      "在会话工作区运行命令": "Run commands in the session workspace",
+      "接管设置": "Pane takeover",
+      "接管工作区文件": "Take over the file pane",
+      "接管终端": "Take over the terminal pane",
+      "本机 / WSL / SSH / Docker": "This machine / WSL / SSH / Docker",
+      "cmd / PowerShell / WSL / SSH": "cmd / PowerShell / WSL / SSH",
+      "删除选中": "Delete selected",
+      "当前：本插件接管": "Now: handled by this plugin",
+      "当前：DSH 自带": "Now: DSH's own pane",
+      "当前：{name} 接管": "Now: handled by {name}",
+      "改动立即生效，不需要重启。": "Changes apply immediately; no restart needed.",
     }
 
     /** The DSH locale service, attached by attachLocale() from apply(). */
@@ -4577,81 +4667,2841 @@ window.__ModuleLoader__.load({
       return React.useSyncExternalStore(subscribeLocale, localeKey, localeKey)
     }
 
-    function registerFilesTab(ctx) {
+    // ---------------------------------------------------------------------
+    // Terminal panel, merged from @lylgj/dsh-terminal.
+    //
+    // The bundle below is that plugin's client half, kept verbatim apart from
+    // the route prefix, the helper port and the session-storage key so it
+    // cannot collide with the original package when both are installed. It is
+    // wrapped instead of copied into the factory scope so its module-local
+    // names (apply, inject, react, ...) stay out of this file's namespace.
+    // ---------------------------------------------------------------------
+    const remoteTerminal = (function () {
+      var module = { exports: {} };
+      var exports = module.exports;
+		const react = require("react");
+		const h = react.createElement;
+
+		// react-dom 用于把面板挂到 body：并排模式下必须脱离 AppFrame 的 overflow:hidden。
+		let reactDom = null;
+		try {
+			reactDom = require("react-dom");
+		} catch {
+			reactDom = null;
+		}
+
+		//#region 常量
+		/** 宿主半边提供的同源路由。 */
+		const ASSET_BASE = "/remote-suite/assets";
+		const WS_PATH = "/remote-suite/terminal/ws";
+		const INFO_PATH = "/remote-suite/terminal/info";
+
+		/**
+		 * 独立终端进程的默认端口（与 lib/helper.js、lib/index.js 保持一致）。
+		 *
+		 * 终端优先直连这个进程：它的事件循环只服务 PTY，不像 dsh 主进程那样会被
+		 * 逐 token 流式解析、会话投影、zstd 压缩落盘与 GC 占满（实测主进程在重载下
+		 * 最坏 20 秒无响应、按键最坏 5 秒无回显）。可用 localStorage 覆盖，方便
+		 * 浏览器通过端口转发访问时指向别的端口。
+		 */
+		const HELPER_DEFAULT_PORT = 3111;
+		const HELPER_PORT_KEY = "remote-suite-terminal-port";
+
+		/**
+		 * DSH 官方右侧栏（@deepseek-ai/dsh-client-ui-sidebar-right）的服务名。
+		 *
+		 * 官方侧栏是 DSH 自带的右侧栏页签系统：主态是「官方侧栏页签」，服务不存在
+		 * 时回退到独立浮层面板（不再对接第三方 better-sidebar）。
+		 */
+		const OFFICIAL_TABS_SERVICE = "sidebarRightTabs";
+		const OFFICIAL_RIGHT_SERVICE = "sidebarRight";
+		/** 本插件在官方侧栏里注册的 tab 类型 id（全局唯一，也是正文槽位的 key）。 */
+		const OFFICIAL_TYPE_ID = "remote-suite/terminal";
+		/**
+		 * 官方侧栏的 tab kind：直接用内置终端的 "terminal"，以扩展身份接管它。
+		 *
+		 * 官方注册表允许扩展（priority: "extension"）接管内置（"builtin"）的
+		 * 同一个 kind：接管后「新建终端」引导卡片、正文与标题槽位、Ctrl+` 快捷键
+		 * 全部落到本插件，开始页只留一个终端入口；扩展卸载时内置定义自动恢复。
+		 */
+		const OFFICIAL_KIND = "terminal";
+
+		/**
+		 * 把多次写入合并到同一个宏任务里一次完成，避免逐帧重排。
+		 *
+		 * 刻意不用 requestAnimationFrame：标签页切到后台后 rAF 会被暂停，
+		 * 隐藏中的终端就会停止刷新滚动缓冲；MessageChannel 不受后台节流影响。
+		 */
+		const coalesce = (() => {
+			let sink = null;
+			let scheduled = false;
+			const drain = () => {
+				scheduled = false;
+				const fn = sink;
+				sink = null;
+				if (fn !== null) fn();
+			};
+			let post = () => setTimeout(drain, 8);
+			if (typeof globalThis.MessageChannel === "function") {
+				const channel = new globalThis.MessageChannel();
+				channel.port1.onmessage = drain;
+				post = () => channel.port2.postMessage(null);
+			}
+			return (fn) => {
+				sink = fn;
+				if (scheduled) return;
+				scheduled = true;
+				post();
+			};
+		})();
+
+		/** localStorage 键：面板宽度与展开状态。 */
+		const KEY_WIDTH = "dsh.terminal.width";
+		const KEY_OPEN = "dsh.terminal.open";
+		/** localStorage 键：布局模式（仅独立浮层面板使用）。 */
+		const KEY_MODE = "dsh.terminal.mode";
+
+		/** 并排：DSH 框架让出右侧空间，互不遮挡。 */
+		const MODE_DOCK = "dock";
+		/** 浮层：终端盖在 DSH 之上。 */
+		const MODE_OVERLAY = "overlay";
+
+		/** localStorage 键：明暗主题。 */
+		const KEY_THEME = "dsh.terminal.theme";
+		/** 浅色主题名。 */
+		const THEME_LIGHT_NAME = "light";
+		/** 暗色主题名。 */
+		const THEME_DARK_NAME = "dark";
+
+		/** localStorage 键：复制/粘贴行为开关（JSON；缺项按默认值补齐）。 */
+		const KEY_CLIPBOARD = "dsh.terminal.clipboard";
+		/** localStorage 键：每个工作区选中的 shell（JSON：会话键 -> shell id）。 */
+		const KEY_SHELLS = "dsh.terminal.shells";
+
+		/**
+		 * 复制/粘贴开关的默认值。
+		 *
+		 * `ctrlC` 只在「有选中内容」时复制，没有选中时仍然是 ^C（SIGINT），
+		 * 所以默认打开不会让人失去中断命令的能力；`rightPaste` 是终端界惯例；
+		 * `selectCopy` 默认关闭，因为「看到什么就复制什么」很容易污染剪贴板。
+		 */
+		const CLIPBOARD_DEFAULTS = { ctrlC: true, rightPaste: true, selectCopy: false, toastPos: "bottom" };
+
+		/** 复制/粘贴提示气泡的位置档位。 */
+		const TOAST_POSITIONS = [
+			{ key: "bottom", label: "底部居中", title: "提示显示在终端面板底部中央" },
+			{ key: "bottomLeft", label: "底部靠左", title: "提示显示在终端面板左下角（不挡输入行右侧）" },
+			{ key: "top", label: "顶部居中", title: "提示显示在工具条下方居中" },
+			{ key: "cursor", label: "跟随鼠标", title: "提示出现在鼠标位置上方，不占用终端画面" },
+			{ key: "off", label: "关闭提示", title: "复制/粘贴后不弹任何提示" }
+		];
+
+		/** 三个开关的文案。三者互相独立，可以任意组合。 */
+		const CLIPBOARD_OPTIONS = [
+			{
+				key: "ctrlC",
+				label: "Ctrl+C 复制",
+				title: "有选中内容时 Ctrl+C（macOS 上 Cmd+C）复制选中文本；没有选中时仍然发送 ^C 中断命令"
+			},
+			{
+				key: "rightPaste",
+				label: "右键粘贴",
+				title: "在终端里点右键直接粘贴剪贴板内容（读取剪贴板需要 localhost 或 HTTPS）"
+			},
+			{
+				key: "selectCopy",
+				label: "选中即复制",
+				title: "鼠标松开、选择停稳后自动复制选中文本"
+			}
+		];
+
+		/** 「选中即复制」的防抖间隔：拖动过程中选中会连续变化，等停稳再复制一次。 */
+		const SELECT_COPY_DEBOUNCE_MS = 150;
+
+		/** 提示气泡的显示时长。 */
+		const TOAST_MS = 1200;
+
+		const MIN_WIDTH = 280;
+		const MAX_WIDTH = 1100;
+		const DEFAULT_WIDTH = 460;
+
+		/** xterm 浅色主题（白底深字）。 */
+		const THEME_LIGHT = {
+			background: "#ffffff",
+			foreground: "#1f2328",
+			cursor: "#1f2328",
+			cursorAccent: "#ffffff",
+			selectionBackground: "#b6d7ff",
+			black: "#24292f",
+			red: "#cf222e",
+			green: "#116329",
+			yellow: "#953800",
+			blue: "#0969da",
+			magenta: "#8250df",
+			cyan: "#1b7c83",
+			white: "#6e7781",
+			brightBlack: "#57606a",
+			brightRed: "#a40e26",
+			brightGreen: "#1a7f37",
+			brightYellow: "#9a6700",
+			brightBlue: "#218bff",
+			brightMagenta: "#a475f9",
+			brightCyan: "#3192aa",
+			brightWhite: "#8c959f"
+		};
+
+		/** xterm 暗色主题（Catppuccin Mocha 系）。 */
+		const THEME_DARK = {
+			background: "#1b1b25",
+			foreground: "#cdd6f4",
+			cursor: "#f5e0dc",
+			cursorAccent: "#1b1b25",
+			selectionBackground: "#585b70",
+			black: "#45475a",
+			red: "#f38ba8",
+			green: "#a6e3a1",
+			yellow: "#f9e2af",
+			blue: "#89b4fa",
+			magenta: "#f5c2e7",
+			cyan: "#94e2d5",
+			white: "#bac2de",
+			brightBlack: "#585b70",
+			brightRed: "#f38ba8",
+			brightGreen: "#a6e3a1",
+			brightYellow: "#f9e2af",
+			brightBlue: "#89b4fa",
+			brightMagenta: "#f5c2e7",
+			brightCyan: "#94e2d5",
+			brightWhite: "#a6adc8"
+		};
+
+		/**
+		 * 主题名对应的 xterm 调色板。
+		 * @param name - 主题名。
+		 * @returns 调色板对象。
+		 */
+		function themeOf(name) {
+			return name === THEME_DARK_NAME ? THEME_DARK : THEME_LIGHT;
+		}
+
+		/** 面板自身样式（一次注入）。 */
+		const STYLE_ID = "remote-suite-terminal-style";
+		const CSS = `
+/* 主题变量：面板与悬浮按钮是兄弟节点，各自带 data-theme，所以两套变量写在二者共用的选择器上。 */
+.dsh-term-panel[data-theme="light"],.dsh-term-tab[data-theme="light"],.dsh-term-embed[data-theme="light"]{color-scheme:light;
+  --t-bg:#ffffff;--t-fg:#1f2328;--t-muted:#6e7781;--t-head-bg:#f6f8fa;
+  --t-border-soft:rgba(0,0,0,.10);
+  --t-btn-bg:#ffffff;--t-btn-fg:#24292f;--t-btn-border:rgba(0,0,0,.15);--t-btn-hover-bg:#eaeef2;--t-btn-hover-fg:#000000;
+  --t-dot:#d0d7de;--t-dot-on:#1a7f37;--t-dot-on-glow:0 0 6px rgba(26,127,55,.5);--t-dot-err:#cf222e;
+  --t-tab-bg:#ffffff;--t-tab-hover-bg:#f3f4f6;--t-tab-fg:#1f2328;--t-tab-border:rgba(0,0,0,.16);
+  --t-tab-shadow:0 6px 18px rgba(0,0,0,.18);--t-shadow:-12px 0 32px rgba(0,0,0,.18);
+  --t-err-fg:#cf222e;--t-err-bg:rgba(255,255,255,.94);
+  --t-count-bg:rgba(0,0,0,.08);--t-count-fg:#24292f;--t-grip-hover:rgba(9,105,218,.25)}
+.dsh-term-panel[data-theme="dark"],.dsh-term-tab[data-theme="dark"],.dsh-term-embed[data-theme="dark"]{color-scheme:dark;
+  --t-bg:#1b1b25;--t-fg:#cdd6f4;--t-muted:#7f849c;--t-head-bg:rgba(255,255,255,.03);
+  --t-border-soft:rgba(255,255,255,.10);
+  --t-btn-bg:transparent;--t-btn-fg:#bac2de;--t-btn-border:rgba(255,255,255,.18);--t-btn-hover-bg:rgba(255,255,255,.10);--t-btn-hover-fg:#ffffff;
+  --t-dot:#6c7086;--t-dot-on:#a6e3a1;--t-dot-on-glow:0 0 6px #a6e3a1;--t-dot-err:#f38ba8;
+  --t-tab-bg:#26263a;--t-tab-hover-bg:#31314a;--t-tab-fg:#cdd6f4;--t-tab-border:rgba(255,255,255,.18);
+  --t-tab-shadow:0 6px 18px rgba(0,0,0,.42);--t-shadow:-12px 0 32px rgba(0,0,0,.42);
+  --t-err-fg:#f38ba8;--t-err-bg:rgba(17,17,27,.86);
+  --t-count-bg:rgba(255,255,255,.12);--t-count-fg:#cdd6f4;--t-grip-hover:rgba(137,180,250,.30)}
+.dsh-term-panel{position:fixed;top:0;right:0;bottom:0;display:flex;flex-direction:column;
+  pointer-events:auto;z-index:40;min-width:0;background:var(--t-bg);color:var(--t-fg)}
+.dsh-term-panel[data-mode="overlay"]{box-shadow:var(--t-shadow)}
+/* 嵌在官方侧栏页签里的形态：撑满页签，不要 fixed / 浮层阴影。 */
+.dsh-term-embed{display:flex;flex-direction:column;position:relative;width:100%;height:100%;min-width:0;min-height:0;
+  overflow:hidden;background:var(--t-bg);color:var(--t-fg)}
+.dsh-term-head{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 10px;flex:0 0 auto;flex-wrap:wrap;
+  border-bottom:1px solid var(--t-border-soft);background:var(--t-head-bg);
+  font:600 12px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--t-fg)}
+/* 页签形态的两行工具条：第一行状态+目录，第二行动作按钮，窄侧栏里不会挤成一团。 */
+.dsh-term-head-compact{flex-wrap:nowrap;flex-direction:column;align-items:stretch;gap:5px}
+.dsh-term-head-row{display:flex;align-items:center;gap:8px;min-width:0}
+.dsh-term-head-compact .dsh-term-cwd{flex:1 1 auto;max-width:none}
+.dsh-term-head-actions{flex-wrap:wrap}
+.dsh-term-head-actions .dsh-term-shell{flex:1 1 150px;max-width:none;min-width:130px}
+.dsh-term-dot{width:7px;height:7px;border-radius:50%;background:var(--t-dot);flex:0 0 auto}
+.dsh-term-dot[data-state="on"]{background:var(--t-dot-on);box-shadow:var(--t-dot-on-glow)}
+.dsh-term-dot[data-state="err"]{background:var(--t-dot-err)}
+.dsh-term-title{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsh-term-status{flex:0 0 auto;font:500 11px/1.4 ui-sans-serif,system-ui,sans-serif;color:var(--t-muted)}
+.dsh-term-status[data-state="on"]{color:#1a7f37}
+.dsh-term-status[data-state="err"]{color:var(--t-err-fg)}
+.dsh-term-shell{flex:0 0 auto;max-width:170px;border:1px solid var(--t-btn-border);background:var(--t-btn-bg);
+  color:var(--t-btn-fg);border-radius:5px;padding:1px 4px;font:500 11px/1.5 ui-sans-serif,system-ui,sans-serif;cursor:pointer}
+.dsh-term-cwd{flex:0 1 auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font:400 11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--t-muted)}
+.dsh-term-btn{flex:0 0 auto;border:1px solid var(--t-btn-border);background:var(--t-btn-bg);color:var(--t-btn-fg);
+  border-radius:5px;padding:2px 7px;font:500 11px/1.5 ui-sans-serif,system-ui,sans-serif;cursor:pointer}
+.dsh-term-btn:hover{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg)}
+.dsh-term-body{position:relative;flex:1 1 auto;min-height:0;padding:6px 4px 6px 8px;overflow:hidden;background:var(--t-bg)}
+.dsh-term-hosts{position:relative;width:100%;height:100%}
+.dsh-term-body .xterm{height:100%}
+.dsh-term-body .xterm-viewport{background:var(--t-bg) !important}
+.dsh-term-grip{position:absolute;left:-3px;top:0;bottom:0;width:7px;cursor:col-resize;
+  pointer-events:auto;background:transparent}
+.dsh-term-grip:hover{background:var(--t-grip-hover)}
+.dsh-term-tab{position:fixed;right:0;bottom:0;pointer-events:auto;z-index:40;
+  display:flex;align-items:center;gap:6px;margin:0 10px 10px 0;padding:6px 11px;border-radius:8px;
+  border:1px solid var(--t-tab-border);background:var(--t-tab-bg);color:var(--t-tab-fg);cursor:pointer;
+  box-shadow:var(--t-tab-shadow);font:600 12px/1.2 ui-sans-serif,system-ui,sans-serif}
+.dsh-term-tab:hover{background:var(--t-tab-hover-bg)}
+.dsh-term-err{position:absolute;left:0;right:0;bottom:0;padding:8px 10px;color:var(--t-err-fg);background:var(--t-err-bg);font:400 12px/1.6 ui-sans-serif,system-ui,sans-serif;white-space:pre-wrap}
+.dsh-term-count{padding:0 6px;border-radius:8px;background:var(--t-count-bg);color:var(--t-count-fg);font:600 10px/16px ui-monospace,SFMono-Regular,Menlo,monospace}
+.dsh-term-btn[data-active="1"]{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg);border-color:var(--t-btn-hover-bg)}
+.dsh-term-menu{display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:0 0 auto;padding:6px 10px;
+  border-bottom:1px solid var(--t-border-soft);background:var(--t-head-bg);
+  font:500 11px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--t-fg)}
+.dsh-term-menu-label{color:var(--t-muted)}
+.dsh-term-opt{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+.dsh-term-opt input{margin:0;cursor:pointer;accent-color:#0969da}
+.dsh-term-menu-hint{flex:1 1 100%;color:var(--t-muted);font-weight:400}
+.dsh-term-toast{position:absolute;z-index:2;padding:4px 12px;border-radius:999px;pointer-events:none;white-space:nowrap;
+  background:var(--t-count-bg);color:var(--t-count-fg);box-shadow:0 4px 14px rgba(0,0,0,.20);
+  font:500 11px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.dsh-term-toast[data-pos="bottom"]{left:50%;bottom:12px;transform:translateX(-50%)}
+.dsh-term-toast[data-pos="bottomLeft"]{left:10px;bottom:12px}
+.dsh-term-toast[data-pos="top"]{left:50%;top:8px;transform:translateX(-50%)}
+/* 跟随鼠标：脱离面板流，按视口坐标定位在指针右上方，不遮挡刚选中的内容 */
+.dsh-term-toast[data-pos="cursor"]{position:fixed;transform:translate(14px,-140%)}
+.dsh-term-seg{flex:0 0 auto;padding:1px 8px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--t-btn-border);background:var(--t-btn-bg);color:var(--t-btn-fg);
+  font:500 11px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.dsh-term-seg:hover{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg)}
+.dsh-term-seg[data-active="1"]{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg);border-color:var(--t-btn-hover-bg);font-weight:600}
+`;
+
+		/**
+		 * 注入面板所需的全局样式（只注入一次）。
+		 * @returns 无返回值。
+		 */
+		function ensureStyle() {
+			if (typeof document === "undefined") return;
+			const exist = document.getElementById(STYLE_ID);
+			if (exist !== null) {
+				// 插件热更新后同步新样式，避免页面不刷新时仍用旧规则。
+				if (exist.textContent !== CSS) exist.textContent = CSS;
+				return;
+			}
+			const el = document.createElement("style");
+			el.id = STYLE_ID;
+			el.textContent = CSS;
+			document.head.appendChild(el);
+		}
+
+		/** 资源加载状态缓存，避免重复注入 script/link。 */
+		let assetsPromise = null;
+
+		/**
+		 * 加载 xterm.js / addon-fit.js / xterm.css（同源，从宿主路由取）。
+		 * 依次串行加载，保证 addon 能看到 window.Terminal。
+		 * @returns 就绪后 resolve 的 Promise。
+		 */
+		function loadAssets() {
+			if (assetsPromise !== null) return assetsPromise;
+			/**
+			 * 注入一个 script 标签并等待加载完成。
+			 * @param src - 脚本地址。
+			 * @returns 加载完成或失败后 resolve 的 Promise。
+			 */
+			const script = (src) =>
+				new Promise((resolve) => {
+					const s = document.createElement("script");
+					s.src = src;
+					s.async = false;
+					s.onload = () => resolve(true);
+					s.onerror = () => resolve(false);
+					document.head.appendChild(s);
+				});
+			assetsPromise = (async () => {
+				const link = document.createElement("link");
+				link.rel = "stylesheet";
+				link.href = `${ASSET_BASE}/xterm.css`;
+				document.head.appendChild(link);
+				if (!(await script(`${ASSET_BASE}/xterm.js`))) throw new Error(tr("xterm.js 加载失败"));
+				if (!(await script(`${ASSET_BASE}/addon-fit.js`))) throw new Error(tr("addon-fit.js 加载失败"));
+				// WebGL 渲染器是可选增强：加载失败就退回 xterm 默认的 DOM 渲染器，
+				// 不能因为它把整个终端面板拖挂。
+				await script(`${ASSET_BASE}/addon-webgl.js`);
+				return true;
+			})();
+			return assetsPromise;
+		}
+
+		/**
+		 * 读取宿主探测信息（默认 shell 与工作目录），失败时静默降级。
+		 * @returns 信息对象或 null。
+		 */
+		async function fetchInfo(key) {
+			try {
+				const res = await fetch(INFO_PATH + (key && key !== DEFAULT_KEY ? "?cwd=" + encodeURIComponent(key) : ""), { headers: { accept: "application/json" } });
+				if (!res.ok) return null;
+				return await res.json();
+			} catch {
+				return null;
+			}
+		}
+
+		/**
+		 * 终端后端（dsh 宿主 HTTP 服务）的 origin。
+		 *
+		 * 浏览器直开时页面就是宿主 origin，直接用 location 拼 WebSocket 没问题；
+		 * 但桌面端页面跑在 Electron 自定义 scheme 下（origin 是 `dsh-app://app`），
+		 * location.host 并不指向宿主，直接拼出来的 `ws://app/...` 必然连不上。
+		 * 宿主通过 preload 在页面上暴露 `__DSH_TRANSPORT__.streamBaseUrl`（DSH 自带的
+		 * 客户端也用它拼 WebSocket），这里优先用它，拿不到再退回 location。
+		 * @returns 后端 origin 的 URL 对象。
+		 */
+		function transportBase() {
+			const transport = globalThis.__DSH_TRANSPORT__;
+			const stream = transport !== undefined && transport !== null ? transport.streamBaseUrl : undefined;
+			if (typeof stream === "string" && stream !== "") {
+				try {
+					const url = new URL(stream);
+					if (url.protocol === "http:" || url.protocol === "https:") return url;
+				} catch {
+					/* 非法值：继续走 location 兜底。 */
+				}
+			}
+			const loc = globalThis.location;
+			if (loc !== undefined && loc !== null && typeof loc.protocol === "string") {
+				try {
+					return new URL(`${loc.protocol}//${loc.host}`);
+				} catch {
+					/* 测试桩可能没有完整 location。 */
+				}
+			}
+			return new URL("http://127.0.0.1");
+		}
+
+		/**
+		 * 从 localStorage 读取面板宽度。
+		 * @returns 夹取到合法区间的宽度像素值。
+		 */
+		function readWidth() {
+			const raw = Number(globalThis.localStorage?.getItem(KEY_WIDTH));
+			if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_WIDTH;
+			return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, raw));
+		}
+
+		/**
+		 * 从 localStorage 读取展开状态，默认展开。
+		 * @returns 是否展开。
+		 */
+		function readOpen() {
+			return globalThis.localStorage?.getItem(KEY_OPEN) !== "0";
+		}
+
+		/**
+		 * 从 localStorage 读取布局模式，默认并排。
+		 * @returns 布局模式。
+		 */
+		function readMode() {
+			return globalThis.localStorage?.getItem(KEY_MODE) === MODE_OVERLAY ? MODE_OVERLAY : MODE_DOCK;
+		}
+
+		/**
+		 * 从 localStorage 读取明暗主题，默认浅色。
+		 * @returns 主题名。
+		 */
+		function readTheme() {
+			return globalThis.localStorage?.getItem(KEY_THEME) === THEME_DARK_NAME ? THEME_DARK_NAME : THEME_LIGHT_NAME;
+		}
+
+		/**
+		 * 从 localStorage 读取复制/粘贴开关。
+		 * @returns 三个开关的当前值（缺项或脏数据用默认值补齐）。
+		 */
+		function readClipboard() {
+			const out = { ...CLIPBOARD_DEFAULTS };
+			try {
+				const raw = globalThis.localStorage?.getItem(KEY_CLIPBOARD);
+				if (raw === null || raw === undefined || raw === "") return out;
+				const parsed = JSON.parse(raw);
+				for (const opt of CLIPBOARD_OPTIONS) {
+					if (typeof parsed?.[opt.key] === "boolean") out[opt.key] = parsed[opt.key];
+				}
+				if (TOAST_POSITIONS.some((p) => p.key === parsed?.toastPos)) out.toastPos = parsed.toastPos;
+			} catch {
+				/* 隐私模式或脏数据：用默认值。 */
+			}
+			return out;
+		}
+
+		/**
+		 * 保存复制/粘贴设置（含提示位置）。
+		 * @param next - 完整设置对象。
+		 * @returns 无返回值。
+		 */
+		function saveClipboard(next) {
+			try {
+				globalThis.localStorage?.setItem(KEY_CLIPBOARD, JSON.stringify(next));
+			} catch {
+				/* 隐私模式：仅本次会话有效。 */
+			}
+		}
+
+		/**
+		 * 写文本进剪贴板：优先异步剪贴板 API，失败退回 execCommand 老路。
+		 *
+		 * 页面若通过非 localhost 的明文 HTTP 打开，`navigator.clipboard` 不存在
+		 * （非安全上下文），此时 execCommand('copy') 仍然可用，所以两条路都要留。
+		 * @param text - 待复制文本。
+		 * @returns 是否复制成功。
+		 */
+		async function copyText(text) {
+			if (typeof text !== "string" || text === "") return false;
+			try {
+				if (typeof globalThis.navigator?.clipboard?.writeText === "function") {
+					await globalThis.navigator.clipboard.writeText(text);
+					return true;
+				}
+			} catch {
+				/* 权限被拒或非安全上下文 → 走兜底。 */
+			}
+			try {
+				const area = document.createElement("textarea");
+				area.value = text;
+				area.setAttribute("readonly", "");
+				area.style.position = "fixed";
+				area.style.left = "-9999px";
+				area.style.top = "0";
+				document.body.appendChild(area);
+				area.select?.();
+				const ok = document.execCommand?.("copy") === true;
+				area.remove?.();
+				return ok;
+			} catch {
+				return false;
+			}
+		}
+
+		/**
+		 * 读取剪贴板文本。
+		 *
+		 * 浏览器只在安全上下文（localhost / HTTPS）且获得授权后才允许读剪贴板；
+		 * 拿不到时返回 null，由调用方提示改用 Ctrl+V（xterm 自身支持粘贴事件）。
+		 * @returns 剪贴板文本；不可读时为 null。
+		 */
+		async function readClipboardText() {
+			try {
+				if (typeof globalThis.navigator?.clipboard?.readText === "function") {
+					return await globalThis.navigator.clipboard.readText();
+				}
+			} catch {
+				/* 权限被拒。 */
+			}
+			return null;
+		}
+
+		/**
+		 * 安全地取终端当前选中的文本。
+		 * @param term - xterm 实例。
+		 * @returns 选中文本；终端已销毁或 API 不可用时为空串。
+		 */
+		function selectionOf(term) {
+			try {
+				if (typeof term?.getSelection !== "function") return "";
+				return term.getSelection() ?? "";
+			} catch {
+				return "";
+			}
+		}
+
+		/**
+		 * 是否具备把面板挂到 body 的能力（并排模式必须脱离框架的 overflow:hidden）。
+		 * @returns 可用时为 true。
+		 */
+		function canPortal() {
+			return reactDom !== null && typeof reactDom.createPortal === "function" && document.body != null;
+		}
+
+		/**
+		 * 在下一帧执行回调（无 requestAnimationFrame 的环境同步执行）。
+		 * @param fn - 待执行回调。
+		 * @returns 无返回值。
+		 */
+		function raf(fn) {
+			if (typeof globalThis.requestAnimationFrame === "function") globalThis.requestAnimationFrame(fn);
+			else fn();
+		}
+
+		/** 无工作区信息时使用的会话键。 */
+		const DEFAULT_KEY = "\u0000default";
+
+		/**
+		 * 由工作区路径得到常驻终端的会话键。
+		 * @param cwd - 当前会话所属工作区目录。
+		 * @returns 会话键；无 cwd 时返回默认键。
+		 */
+		function keyOf(cwd) {
+			return typeof cwd === "string" && cwd !== "" ? cwd : DEFAULT_KEY;
+		}
+
+		/**
+		 * 会话键对应的显示名。
+		 * @param key - 会话键。
+		 * @returns 可展示的工作区路径。
+		 */
+		function labelOf(key) {
+			return key === DEFAULT_KEY ? tr("(默认目录)") : key;
+		}
+
+		/**
+		 * 运行时未提供 useSessions 时的兜底 hook（保持 hook 调用位置稳定）。
+		 * @returns 恒为 undefined。
+		 */
+		function fallbackUseSessions() {
+			return undefined;
+		}
+
+		//#endregion
+
+		//#region 共享设置（独立浮层面板与官方侧栏页签共用同一份）
+		/** 当前设置：明暗主题 + 复制/粘贴开关。 */
+		let settings;
+		try {
+			settings = { theme: readTheme(), clipboard: readClipboard() };
+		} catch {
+			settings = { theme: THEME_LIGHT_NAME, clipboard: { ...CLIPBOARD_DEFAULTS } };
+		}
+		/** 设置变化的订阅者。 */
+		const settingsListeners = new Set();
+
+		/**
+		 * 读取当前设置。
+		 * @returns 设置对象。
+		 */
+		function getSettings() {
+			return settings;
+		}
+
+		/**
+		 * 订阅设置变化。
+		 * @param fn - 变化回调。
+		 * @returns 取消订阅函数。
+		 */
+		function subscribeSettings(fn) {
+			settingsListeners.add(fn);
+			return () => {
+				settingsListeners.delete(fn);
+			};
+		}
+
+		/**
+		 * 更新并持久化设置，通知所有订阅者（两个 UI 的终端都会跟着换主题/开关）。
+		 * @param patch - 局部更新。
+		 * @returns 更新后的完整设置。
+		 */
+		function updateSettings(patch) {
+			const prev = settings;
+			const next = { ...prev, ...patch };
+			if (patch.theme !== undefined) {
+				try {
+					globalThis.localStorage?.setItem(KEY_THEME, next.theme);
+				} catch {
+					/* 隐私模式：仅本次会话有效。 */
+				}
+			}
+			if (patch.clipboard !== undefined) saveClipboard(next.clipboard);
+			settings = next;
+			for (const fn of [...settingsListeners]) {
+				try {
+					fn(next, prev);
+				} catch (error) {
+					console.error("[remote-suite] 设置订阅者异常：", error);
+				}
+			}
+			return next;
+		}
+
+		/** 在浅色/暗色之间切换（并持久化、同步所有终端）。 */
+		function toggleTheme() {
+			updateSettings({ theme: settings.theme === THEME_DARK_NAME ? THEME_LIGHT_NAME : THEME_DARK_NAME });
+		}
+
+		/**
+		 * 修改复制/粘贴开关。
+		 * @param patch - 要修改的字段。
+		 * @returns 无返回值。
+		 */
+		function patchClipboard(patch) {
+			updateSettings({ clipboard: { ...settings.clipboard, ...patch } });
+		}
+
+		/** 每个工作区（会话键）选中的 shell id；空串/缺项表示用宿主默认 shell。 */
+		const shellChoices = (() => {
+			try {
+				const raw = globalThis.localStorage?.getItem(KEY_SHELLS);
+				const parsed = raw === null || raw === undefined || raw === "" ? null : JSON.parse(raw);
+				return parsed !== null && typeof parsed === "object" ? parsed : {};
+			} catch {
+				return {};
+			}
+		})();
+
+		/**
+		 * 读取某工作区选中的 shell id。
+		 * @param key - 会话键。
+		 * @returns shell id；未选择时为空串。
+		 */
+		function getShellChoice(key) {
+			const id = shellChoices[key];
+			return typeof id === "string" && id !== "bash" ? id : "";
+		}
+
+		/**
+		 * 记住某工作区选中的 shell id（空串表示恢复宿主默认）。
+		 * @param key - 会话键。
+		 * @param id - shell id。
+		 * @returns 无返回值。
+		 */
+		function setShellChoice(key, id) {
+			if (typeof id === "string" && id !== "") shellChoices[key] = id;
+			else delete shellChoices[key];
+			try {
+				globalThis.localStorage?.setItem(KEY_SHELLS, JSON.stringify(shellChoices));
+			} catch {
+				/* 隐私模式：仅本次会话有效。 */
+			}
+		}
+		//#endregion
+
+		//#region 终端核心（与 UI 解耦，浮层与页签共用）
+		/**
+		 * 建一个终端核心：按工作区目录维护常驻 PTY 连接 + xterm 实例。
+		 *
+		 * 刻意放在模块级（而不是组件内）：浮层面板与官方侧栏页签是两个
+		 * 组件，但同一工作区必须共享同一个 shell。组件只负责把宿主 div 挂到自己
+		 * 的容器里再摘下来，终端本体与 WebSocket 不随组件挂载/卸载而重建。
+		 * @returns 终端核心 API。
+		 */
+		function createTerminalCore() {
+			/** 会话表：工作区目录 -> {host, term, fit, ws, ...}。 */
+			const sessions = new Map();
+			/** 状态变化订阅者（头部状态点/错误提示需要重渲染）。 */
+			const listeners = new Set();
+			/** 递增版本号，订阅者据此知道该重渲染了。 */
+			let revision = 0;
+
+			/**
+			 * 通知所有订阅者会话状态有变化。
+			 * @returns 无返回值。
+			 */
+			function changed() {
+				revision++;
+				for (const fn of [...listeners]) {
+					try {
+						fn(revision);
+					} catch (error) {
+						console.error("[remote-suite] 会话订阅者异常：", error);
+					}
+				}
+			}
+
+			/**
+			 * 订阅会话状态变化。
+			 * @param fn - 变化回调。
+			 * @returns 取消订阅函数。
+			 */
+			function subscribe(fn) {
+				listeners.add(fn);
+				return () => {
+					listeners.delete(fn);
+				};
+			}
+
+			/**
+			 * 确保某个工作区拥有终端会话记录（不启动 PTY，纯粹建记录）。
+			 * @param key - 会话键。
+			 * @returns 会话记录。
+			 */
+			function ensure(key) {
+				const exist = sessions.get(key);
+				if (exist !== undefined) return exist;
+				const host = document.createElement("div");
+				host.className = "dsh-term-host";
+				host.style.width = "100%";
+				host.style.height = "100%";
+				host.style.display = "none";
+				const s = {
+					key,
+					host,
+					container: null,
+					term: null,
+					fit: null,
+					webgl: null,
+					ws: null,
+					observer: null,
+					status: "wait",
+					error: "",
+					retry: null,
+					/** 宿主回传的环境 id（local / wsl:<发行版> / ssh:<主机>），连接后由控制帧填充。 */
+					env: "",
+					kind: "",
+					disposed: false,
+					booting: false,
+					booted: false,
+					/** 「选中即复制」的防抖定时器。 */
+					selectTimer: null,
+					/** 右键粘贴的宿主监听器（回收时移除）。 */
+					onContextMenu: null,
+					/** 提示气泡回调（当前挂载的 UI 注入；未挂载时为 null）。 */
+					notify: null
+				};
+				sessions.set(key, s);
+				return s;
+			}
+
+			/**
+			 * 取会话记录。
+			 * @param key - 会话键。
+			 * @returns 会话记录或 null。
+			 */
+			function session(key) {
+				return sessions.get(key) ?? null;
+			}
+
+			/**
+			 * 当前常驻会话键列表。
+			 * @returns 键列表。
+			 */
+			function keys() {
+				return [...sessions.keys()];
+			}
+
+			/**
+			 * 常驻会话数量。
+			 * @returns 数量。
+			 */
+			function size() {
+				return sessions.size;
+			}
+
+			/**
+			 * 对指定会话做一次 fit（容器不可见时跳过，避免 PTY 被缩成 0 列）。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function refit(key) {
+				const s = sessions.get(key);
+				if (s === undefined || s === null) return;
+				if (s.fit === null || s.host === null) return;
+				if (s.host.clientWidth === 0 || s.host.clientHeight === 0) return;
+				try {
+					s.fit.fit();
+				} catch {
+					/* 尺寸竞争时忽略。 */
+				}
+			}
+
+			/**
+			 * 聚焦指定会话的终端。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function focus(key) {
+				const s = sessions.get(key);
+				if (s === undefined || s === null) return;
+				try {
+					s.term?.focus?.();
+				} catch {
+					/* 终端已销毁。 */
+				}
+			}
+
+			/**
+			 * 清屏（仅当前会话，保留滚动缓冲之外的内容）。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function clear(key) {
+				const s = sessions.get(key);
+				if (s === undefined || s === null) return;
+				try {
+					s.term?.clear?.();
+				} catch {
+					/* 终端已销毁。 */
+				}
+			}
+
+			/**
+			 * 重建到后端的 WebSocket（复用同一个 xterm 与 PTY 后端）。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function reconnect(key) {
+				const s = sessions.get(key);
+				if (s === undefined || s === null) return;
+				connect(s);
+			}
+
+			/**
+			 * 把会话的宿主 div 挂进某个容器并启动（幂等）。
+			 * @param key - 会话键。
+			 * @param container - DOM 容器。
+			 * @returns 会话记录。
+			 */
+			function attach(key, container) {
+				const s = ensure(key);
+				if (container !== null && container !== undefined && s.container !== container) {
+					if (s.host.parentElement !== container) container.appendChild(s.host);
+					s.container = container;
+				}
+				s.host.style.display = "block";
+				if (!s.booted && !s.booting) {
+					s.booting = true;
+					void boot(s);
+				}
+				raf(() => refit(key));
+				return s;
+			}
+
+			/**
+			 * 显示指定会话（切换工作区时用）。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function show(key) {
+				const s = sessions.get(key);
+				if (s === undefined || s === null) return;
+				s.host.style.display = "block";
+				raf(() => refit(key));
+			}
+
+			/**
+			 * 隐藏指定会话（保留 PTY 与滚动缓冲，切回来继续）。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function hide(key) {
+				const s = sessions.get(key);
+				if (s === undefined || s === null) return;
+				s.host.style.display = "none";
+			}
+
+			/**
+			 * 把会话的宿主 div 从容器里摘下来（不销毁终端）。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function detach(key) {
+				const s = sessions.get(key);
+				if (s === undefined || s === null) return;
+				try {
+					s.host.remove?.();
+				} catch {
+					/* 已经不在 DOM 里。 */
+				}
+				s.container = null;
+				s.notify = null;
+			}
+
+			/**
+			 * 把主题同步到所有常驻终端。
+			 * @param palette - xterm 调色板。
+			 * @returns 无返回值。
+			 */
+			function applyTheme(palette) {
+				for (const s of sessions.values()) {
+					const term = s.term;
+					if (term === null || term === undefined) continue;
+					try {
+						term.options.theme = palette;
+					} catch {
+						/* 终端已销毁。 */
+					}
+				}
+			}
+
+			/**
+			 * 为某个会话建立（或重建）到后端的 WebSocket，并按需自动重连。
+			 * @param s - 会话记录。
+			 * @param attempt - 第几个候选后端（0=独立进程，1=同源路由）。
+			 * @returns 无返回值。
+			 */
+			function connect(s, attempt = 0) {
+				const term = s.term;
+				if (term === null) return;
+
+				// 重建前先静默关掉旧连接，避免触发它的自动重连。
+				const prev = s.ws;
+				if (prev !== null) {
+					try {
+						prev.onclose = null;
+						prev.close();
+					} catch {
+						/* 已经断开。 */
+					}
+					s.ws = null;
+				}
+				if (s.retry !== null) {
+					clearTimeout(s.retry);
+					s.retry = null;
+				}
+
+				s.status = "wait";
+				s.error = "";
+				changed();
+
+				// 后端 origin：浏览器直开时是 location；桌面端（dsh-app:// 页面）是
+				// __DSH_TRANSPORT__.streamBaseUrl 指向的宿主 HTTP 服务。
+				const base = transportBase();
+				const proto = base.protocol === "https:" ? "wss:" : "ws:";
+				const qs = new URLSearchParams({ cols: String(term.cols || 80), rows: String(term.rows || 24) });
+				// 把本会话所属工作区交给宿主，PTY 就在该目录下启动。
+				if (s.key !== DEFAULT_KEY) qs.set("cwd", s.key);
+				// 该工作区选中的 shell（cmd / powershell / WSL / SSH …）；空表示宿主默认。
+				const chosenShell = getShellChoice(s.key);
+				if (chosenShell !== "") qs.set("shell", chosenShell);
+
+				// 候选后端：先独立终端进程（延迟不受 dsh 主进程影响），再同源路由兜底。
+				let helperPort = HELPER_DEFAULT_PORT;
+				try {
+					const override = Number(globalThis.localStorage?.getItem(HELPER_PORT_KEY));
+					if (Number.isFinite(override) && override > 0) helperPort = override;
+				} catch {
+					/* 隐私模式等拿不到 localStorage，用默认端口。 */
+				}
+				const targets = [
+					{ kind: "helper", url: `${proto}//${base.hostname}:${helperPort}/ws?${qs.toString()}` },
+					{ kind: "inline", url: `${proto}//${base.host}${WS_PATH}?${qs.toString()}` }
+				];
+				const target = targets[Math.min(attempt, targets.length - 1)];
+
+				let ws;
+				try {
+					ws = new WebSocket(target.url);
+				} catch (err) {
+					s.status = "err";
+					s.error = String(err?.message ?? err);
+					changed();
+					return;
+				}
+				s.ws = ws;
+				/** 是否已成功握手：未握手就断开说明该后端不可达，直接换下一个。 */
+				let opened = false;
+				/** 本连接待写入 xterm 的 PTY 输出，按宏任务合批后一次写。 */
+				const pending = [];
+				const flushPending = () => {
+					if (pending.length === 0) return;
+					term.write(pending.join(""));
+					pending.length = 0;
+				};
+
+				ws.onopen = () => {
+					if (s.disposed) return;
+					opened = true;
+					s.backend = target.kind;
+					s.status = "on";
+					s.error = "";
+					changed();
+					refit(s.key);
+					if (term.cols > 0) ws.send(JSON.stringify({ t: "r", c: term.cols, r: term.rows }));
+					if (target.kind === "helper") {
+						console.info(
+							`[remote-suite] 已连接独立终端进程 ${base.hostname}:${helperPort}（按键回显不受 dsh 主进程负载影响）`
+						);
+					} else {
+						console.info("[remote-suite] 独立终端进程不可达，已回退到同源路由。");
+					}
+				};
+
+				ws.onmessage = (ev) => {
+					if (s.disposed) return;
+					const data = typeof ev.data === "string" ? ev.data : "";
+					// 宿主控制帧（以 {"t":" 开头）与 PTY 原始输出区分开：
+					// t:"e" = 终端启动/上限类错误；t:"s" = 本会话所属环境。
+					if (data.startsWith('{"t":"')) {
+						let frame = null;
+						try {
+							frame = JSON.parse(data);
+						} catch {
+							frame = null;
+						}
+						if (frame !== null && typeof frame === "object") {
+							if (frame.t === "e") {
+								s.status = "err";
+								s.error = typeof frame.d === "string" && frame.d !== "" ? frame.d : tr("终端启动失败");
+								changed();
+								return;
+							}
+							if (frame.t === "s") {
+								s.env = typeof frame.env === "string" ? frame.env : "";
+								s.kind = typeof frame.kind === "string" ? frame.kind : "";
+								changed();
+								return;
+							}
+						}
+					}
+					// 隐藏中的终端同样在收数据，因此其滚动缓冲始终是最新的；
+					// 合批到同一个宏任务再写入，避免逐帧重排。
+					pending.push(data);
+					coalesce(flushPending);
+				};
+
+				ws.onclose = () => {
+					if (s.disposed) return;
+					// 还没握手就断开：说明该后端不可达（独立进程没起、或端口未转发），
+					// 立刻换下一个候选后端；全都试过才进入 3 秒重连。
+					if (!opened && attempt + 1 < targets.length) {
+						s.status = "wait";
+						changed();
+						connect(s, attempt + 1);
+						return;
+					}
+					s.status = "err";
+					s.error = opened ? tr("连接已断开，3 秒后自动重连…") : tr("无法连接终端后端，3 秒后重试…");
+					changed();
+					if (s.retry !== null) clearTimeout(s.retry);
+					s.retry = setTimeout(() => {
+						s.retry = null;
+						if (!s.disposed) connect(s, 0);
+					}, 3000);
+				};
+
+				ws.onerror = () => {
+					/* 具体原因由 onclose 统一处理。 */
+				};
+			}
+
+			/**
+			 * 启动一个会话：加载 xterm 资源、建终端、挂剪贴板与尺寸监听、连后端。
+			 * @param s - 会话记录。
+			 * @returns 无返回值。
+			 */
+			async function boot(s) {
+				try {
+					await loadAssets();
+				} catch (err) {
+					if (s.disposed) return;
+					s.status = "err";
+					s.error = tr("终端资源加载失败：{detail}\n请确认已刷新页面以加载最新插件。", { detail: String(err?.message ?? err) });
+					changed();
+					return;
+				}
+				if (s.disposed) return;
+
+				const term = new globalThis.Terminal({
+					cursorBlink: true,
+					fontSize: 13,
+					fontFamily: 'ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace',
+					lineHeight: 1.2,
+					scrollback: 10000,
+					allowProposedApi: true,
+					theme: themeOf(getSettings().theme)
+				});
+				const fit = new globalThis.FitAddon.FitAddon();
+				term.loadAddon(fit);
+				term.open(s.host);
+				s.term = term;
+				s.fit = fit;
+
+				/**
+				 * WebGL 渲染器：把终端绘制从主线程 DOM 操作搬到 GPU。
+				 *
+				 * 这很关键 —— 聊天区流式输出时每个 token 都要重渲染，DOM 渲染器
+				 * 会和它抢同一个主线程；WebGL 之后终端绘制几乎不占主线程。
+				 * 上下文丢失（GPU 驱动重置、标签页回收）时卸载它，自动退回 DOM。
+				 */
+				try {
+					if (typeof globalThis.WebglAddon?.WebglAddon === "function") {
+						const webgl = new globalThis.WebglAddon.WebglAddon();
+						webgl.onContextLoss(() => {
+							try {
+								webgl.dispose();
+							} catch {
+								/* 已经卸载。 */
+							}
+						});
+						term.loadAddon(webgl);
+						s.webgl = webgl;
+					}
+				} catch {
+					/* 设备/浏览器不支持 WebGL：保持默认 DOM 渲染器即可。 */
+				}
+
+				term.onData((d) => {
+					const ws = s.ws;
+					if (ws !== null && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "i", d }));
+				});
+				term.onResize(({ cols, rows }) => {
+					const ws = s.ws;
+					if (ws !== null && ws.readyState === WebSocket.OPEN) {
+						ws.send(JSON.stringify({ t: "r", c: cols, r: rows }));
+					}
+				});
+				term.onTitleChange(() => {
+					/* 预留：可用于把标题显示到面板头部。 */
+				});
+
+				/**
+				 * Ctrl+C 复制（可选）。
+				 *
+				 * 只有「有选中内容」时才把按键拦下来复制，否则原样交回 xterm 发送
+				 * ^C —— 所以即使默认打开，也不会失去中断命令的能力。同时接受
+				 * Cmd+C（macOS 习惯）；带 Shift/Alt 的组合一律放行。
+				 */
+				term.attachCustomKeyEventHandler?.((ev) => {
+					if (ev?.type !== "keydown") return true;
+					if (getSettings().clipboard.ctrlC !== true) return true;
+					const key = typeof ev.key === "string" ? ev.key.toLowerCase() : "";
+					if (key !== "c") return true;
+					if ((ev.ctrlKey !== true && ev.metaKey !== true) || ev.altKey === true || ev.shiftKey === true) return true;
+					const selected = selectionOf(term);
+					if (selected === "") return true;
+					const at = ev.clientX !== undefined && ev.clientX !== 0 ? { x: ev.clientX, y: ev.clientY } : null;
+					void copyText(selected).then((ok) => {
+						s.notify?.(ok ? tr("已复制 {count} 个字符", { count: selected.length }) : tr("复制失败：浏览器拒绝了剪贴板写入"), at);
+					});
+					return false;
+				});
+
+				/**
+				 * 选中即复制（可选）。
+				 *
+				 * 拖动过程中选中内容会连续变化，所以做 150ms 防抖：停稳后才复制一次，
+				 * 避免把半截内容反复写进剪贴板。
+				 */
+				term.onSelectionChange?.(() => {
+					if (getSettings().clipboard.selectCopy !== true) return;
+					if (s.selectTimer !== null) clearTimeout(s.selectTimer);
+					s.selectTimer = setTimeout(() => {
+						s.selectTimer = null;
+						const selected = selectionOf(term);
+						if (selected === "") return;
+						void copyText(selected).then((ok) => {
+							if (ok) s.notify?.(tr("已复制 {count} 个字符", { count: selected.length }));
+						});
+					}, SELECT_COPY_DEBOUNCE_MS);
+				});
+
+				/**
+				 * 右键粘贴（可选）。
+				 *
+				 * 拦截浏览器右键菜单；拿到文本后交给 `term.paste()` 而不是直接发原始
+				 * 数据，这样括号粘贴模式与换行处理跟正常粘贴完全一致（多行内容不会被
+				 * 应用当成多条命令立刻执行）。
+				 */
+				const onContextMenu = (ev) => {
+					if (getSettings().clipboard.rightPaste !== true) return;
+					ev.preventDefault?.();
+					const at = { x: ev.clientX ?? 0, y: ev.clientY ?? 0 };
+					void readClipboardText().then((text) => {
+						if (text === null) {
+							s.notify?.(tr("此环境不允许读取剪贴板，请用 Ctrl+V 粘贴"), at);
+							return;
+						}
+						if (text === "") return;
+						try {
+							if (typeof term.paste === "function") term.paste(text);
+							else {
+								const ws = s.ws;
+								if (ws !== null && ws.readyState === WebSocket.OPEN) {
+									ws.send(JSON.stringify({ t: "i", d: text }));
+								}
+							}
+						} catch {
+							/* 终端已销毁时忽略。 */
+						}
+						s.notify?.(tr("已粘贴 {count} 个字符", { count: text.length }), at);
+					});
+				};
+				// 用捕获阶段挂载：即使 xterm 内部对右键做了 stopPropagation，也保证能拦到。
+				s.host.addEventListener?.("contextmenu", onContextMenu, true);
+				s.onContextMenu = onContextMenu;
+
+				if (typeof ResizeObserver !== "undefined") {
+					s.observer = new ResizeObserver(() => refit(s.key));
+					s.observer.observe(s.host);
+				}
+
+				term.write(`\r\n\x1b[2m` + tr("[已为工作区 {cwd} 启动常驻终端；切走后它继续运行]", { cwd: labelOf(s.key) }) + `\x1b[0m\r\n`);
+				s.booted = true;
+				refit(s.key);
+				connect(s);
+				changed();
+			}
+
+			/**
+			 * 销毁一个会话（关 WS → 后端会回收 PTY；再销毁 xterm 与 DOM）。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
+			function dispose(key) {
+				const s = sessions.get(key);
+				if (s === undefined) return;
+				s.disposed = true;
+				if (s.retry !== null) clearTimeout(s.retry);
+				if (s.selectTimer !== null) clearTimeout(s.selectTimer);
+				if (s.onContextMenu !== null) {
+					try {
+						s.host?.removeEventListener?.("contextmenu", s.onContextMenu, true);
+					} catch {
+						/* 已不在。 */
+					}
+				}
+				s.observer?.disconnect?.();
+				if (s.ws !== null) {
+					try {
+						s.ws.onclose = null;
+						s.ws.close();
+					} catch {
+						/* 忽略。 */
+					}
+				}
+				try {
+					s.term?.dispose?.();
+				} catch {
+					/* 忽略。 */
+				}
+				try {
+					s.host?.remove?.();
+				} catch {
+					/* 忽略。 */
+				}
+				sessions.delete(key);
+				changed();
+			}
+
+			/**
+			 * 销毁全部会话（插件卸载时调用）。
+			 * @returns 无返回值。
+			 */
+			function disposeAll() {
+				for (const key of [...sessions.keys()]) dispose(key);
+			}
+
+			return {
+				attach,
+				applyTheme,
+				clear,
+				detach,
+				dispose,
+				disposeAll,
+				focus,
+				hide,
+				keys,
+				reconnect,
+				refit,
+				session,
+				show,
+				size,
+				subscribe
+			};
+		}
+
+		/** 全局唯一的终端核心：浮层面板与官方侧栏页签共享。 */
+		const core = createTerminalCore();
+
+		/**
+		 * 由会话键推断「环境」id（local / wsl:<发行版> / ssh:<主机>）。
+		 * 优先用宿主控制帧回传的真实环境（连接后），其次用该工作区选中的 shell、
+		 * WSL UNC 路径特征推断，再其次用调用方传入的工作区默认环境（/info 的 env），
+		 * 最后回退到本机 local。
+		 * @param key - 会话键。
+		 * @param fallback - 该工作区的默认环境（仅用于当前终端本身）。
+		 * @returns 环境 id。
+		 */
+		function envOf(key, fallback) {
+			const session = core.session(key);
+			if (session !== null && typeof session.env === "string" && session.env !== "") return session.env;
+			const chosen = getShellChoice(key);
+			if (chosen.startsWith("wsl:") || chosen.startsWith("ssh:") || chosen.startsWith("docker:")) return chosen;
+			const wsl = /^\\\\(?:wsl(?:\.localhost|\$)|wsl\.localhost)\\([^\\]+)/i.exec(key);
+			if (wsl !== null) return `wsl:${wsl[1]}`;
+			if (typeof fallback === "string" && fallback !== "") return fallback;
+			return "local";
+		}
+		//#endregion
+
+		//#region 接入方式（官方右侧栏 / 独立浮层）
+		/**
+		 * 当前 UI 的挂载方式：
+		 * - "overlay"：独立浮层面板（没有官方右侧栏时的兜底形态）；
+		 * - "sidebar"：作为 DSH 官方右侧栏的页签（0.2.2+ 默认形态）。
+		 * 两个 UI 组件都订阅它，保证同一时刻只有一种形态在画面上。
+		 */
+		const integration = {
+			mode: "overlay",
+			listeners: new Set(),
+			/**
+			 * 切换挂载方式并通知订阅者。
+			 * @param next - 新的方式。
+			 * @returns 无返回值。
+			 */
+			set(next) {
+				if (this.mode === next) return;
+				this.mode = next;
+				for (const fn of [...this.listeners]) {
+					try {
+						fn(next);
+					} catch (error) {
+						console.error("[remote-suite] 接入方式订阅者异常：", error);
+					}
+				}
+			},
+			/**
+			 * 订阅挂载方式变化。
+			 * @param fn - 变化回调。
+			 * @returns 取消订阅函数。
+			 */
+			subscribe(fn) {
+				this.listeners.add(fn);
+				return () => {
+					this.listeners.delete(fn);
+				};
+			}
+		};
+
+		/**
+		 * 订阅共享设置（主题/剪贴板）。
+		 * @returns 当前设置对象。
+		 */
+		function useSettings() {
+			const [value, setValue] = react.useState(getSettings);
+			react.useEffect(() => subscribeSettings((next) => setValue(next)), []);
+			return value;
+		}
+
+		/**
+		 * 订阅挂载方式。
+		 * @returns 当前方式（"overlay" / "sidebar"）。
+		 */
+		function useIntegrationMode() {
+			const [mode, setMode] = react.useState(integration.mode);
+			react.useEffect(() => integration.subscribe(setMode), []);
+			return mode;
+		}
+
+		/**
+		 * 订阅终端核心的状态变化，让工具条能跟上连接状态/错误/数量。
+		 * @returns 递增的版本号（仅用于触发重渲染）。
+		 */
+		function useCoreVersion() {
+			const [version, setVersion] = react.useState(0);
+			react.useEffect(() => core.subscribe(setVersion), []);
+			return version;
+		}
+
+		/**
+		 * 复制/粘贴提示气泡：显示、自动消失，并记住最近一次指针位置。
+		 * @returns 气泡内容、位置、触发函数与指针跟踪函数。
+		 */
+		function useFlash() {
+			const [toast, setToast] = react.useState("");
+			const [toastAt, setToastAt] = react.useState(null);
+			const timerRef = react.useRef(null);
+			/** 最近一次指针位置（视口坐标），供键盘触发复制/粘贴的「跟随鼠标」档使用。 */
+			const pointerRef = react.useRef(null);
+
+			const flash = react.useCallback((message, at) => {
+				if (getSettings().clipboard.toastPos === "off") return;
+				setToastAt(at ?? pointerRef.current ?? null);
+				setToast(message);
+				if (timerRef.current !== null) clearTimeout(timerRef.current);
+				timerRef.current = setTimeout(() => {
+					setToast("");
+					setToastAt(null);
+				}, TOAST_MS);
+			}, []);
+
+			const trackPointer = react.useCallback((ev) => {
+				pointerRef.current = { x: ev.clientX, y: ev.clientY };
+			}, []);
+
+			react.useEffect(
+				() => () => {
+					if (timerRef.current !== null) clearTimeout(timerRef.current);
+				},
+				[]
+			);
+
+			return { toast, toastAt, flash, trackPointer };
+		}
+
+		/**
+		 * 状态点：连接中 / 已连接 / 出错。
+		 * @param status - 会话状态。
+		 * @returns React 元素。
+		 */
+		function renderDot(status) {
+			return h("span", {
+				className: "dsh-term-dot",
+				"data-state": status === "on" ? "on" : status === "err" ? "err" : "wait"
+			});
+		}
+
+		/**
+		 * 终端工具条（浮层面板与页签共用的头部）。
+		 * @param options - 展示项与按钮回调。
+		 * @returns React 元素。
+		 */
+		function infoOptions(options, shells) { return options.detectedShell && !shells.some((sh) => sh.id === options.detectedShell.id) ? [h("option", { value: options.detectedShell.id }, options.detectedShell.label)] : []; }
+		function useMenuDismiss(open, setOpen) {
+			react.useEffect(() => {
+				if (!open) return;
+				const outside = (event) => {
+					if (event.target?.closest?.("[data-dsh-terminal-menu], [data-copy-menu]")) return;
+					setOpen(false);
+				};
+				const escape = (event) => {
+					if (event.key === "Escape") setOpen(false);
+				};
+				document.addEventListener?.("pointerdown", outside, true);
+				document.addEventListener?.("keydown", escape, true);
+				return () => {
+					document.removeEventListener?.("pointerdown", outside, true);
+					document.removeEventListener?.("keydown", escape, true);
+				};
+			}, [open, setOpen]);
+		}
+
+		function SessionMenu(props) {
+			const ref = react.useRef(null);
+			react.useEffect(() => {
+				const outside = (event) => {
+					const node = ref.current;
+					if (node?.open && !node.contains(event.target)) node.open = false;
+				};
+				const escape = (event) => {
+					if (event.key === "Escape" && ref.current?.open) ref.current.open = false;
+				};
+				document.addEventListener("pointerdown", outside, true);
+				document.addEventListener("keydown", escape, true);
+				return () => {
+					document.removeEventListener("pointerdown", outside, true);
+					document.removeEventListener("keydown", escape, true);
+				};
+			}, []);
+			return h("details", { ref, className: "dsh-term-sessions", style: { position: "relative" } }, ...props.children);
+		}
+
+		function renderToolbar(options) {
+			const shells = Array.isArray(options.shells) ? options.shells : [];
+			const shellId = typeof options.shellId === "string" ? options.shellId : "";
+			const compact = options.compact === true;
+			const button = (label, title, onClick, extra) =>
+				h("button", { className: "dsh-term-btn", onClick, title, ...(extra ?? {}) }, label);
+			const themeButton = button(
+				options.theme === THEME_DARK_NAME ? tr("暗色") : tr("浅色"),
+				options.theme === THEME_DARK_NAME ? tr("当前为暗色。点击切换为浅色") : tr("当前为浅色。点击切换为暗色"),
+				options.onTheme
+			);
+			const menuButton = button(tr("复制"), tr("复制/粘贴设置"), options.onMenu, {
+				"data-active": options.menuOpen ? "1" : "0",
+				"data-copy-menu": "1"
+			});
+			const clearButton = button(tr("清屏"), tr("清屏（仅当前工作区）"), options.onClear);
+			const reconnectButton = button(tr("重连"), tr("重新连接当前工作区的 PTY"), options.onReconnect);
+			// 第一项是「默认 shell」（空 id）：按工作目录自动选 bash（Windows 用 Git Bash，
+			// WSL 目录用该发行版 bash，remote-ssh 工作区 ssh 到远端 bash）。
+			const shellSelect =
+				shells.length === 0
+					? null
+					: h(
+							"select",
+							{
+								className: "dsh-term-shell",
+								title: tr("选择本工作区终端使用的 shell（默认 shell / Windows:cmd / Windows:PowerShell / WSL / SSH）"),
+								value: shellId,
+								onChange: (ev) => {
+									if (typeof options.onShell === "function") options.onShell(ev.target.value);
+								}
+							},
+							...(infoOptions(options, shells)),
+							...shells.map((sh) => h("option", { key: sh.id, value: sh.id }, sh.label ?? sh.id))
+						);
+			const statusNode = h(
+				"span",
+				{ className: "dsh-term-status", "data-state": options.status, title: options.statusTitle ?? "" },
+				options.status === "on" ? tr("已连接") : options.status === "err" ? tr("连接失败") : tr("连接中…")
+			);
+			const cwdNode = h("span", { className: "dsh-term-cwd", title: options.shownCwd }, options.shownCwd);
+			/** 本环境（local / wsl:<发行版> / ssh:<主机>）的后台终端：列表与计数都只看同一环境。 */
+			const sessionKeys = Array.isArray(options.keys) ? options.keys : core.keys();
+			const countNode = h(SessionMenu, null,
+				h("summary", { className: "dsh-term-count", title: tr("查看和关闭本环境的后台终端（包含当前终端）"), style: { cursor: "pointer", whiteSpace: "nowrap" } }, tr("后台终端：{count}", { count: options.count })),
+				h("div", { style: { position: "absolute", right: 0, top: "100%", zIndex: 50, background: "var(--t-bg, white)", border: "1px solid #888", padding: "8px", width: "300px", maxHeight: "240px", overflow: "auto" } },
+					...sessionKeys.map((key) => h("div", { key, style: { display: "flex", gap: "8px", marginTop: "6px" } },
+						h("span", { title: labelOf(key), style: { flex: 1, overflowWrap: "anywhere" } }, labelOf(key) + (labelOf(key) === options.shownCwd ? tr("（当前）") : "")),
+						h("button", { type: "button", onClick: () => core.dispose(key) }, tr("关闭")))),
+					h("button", { type: "button", style: { marginTop: "8px", display: "block", marginLeft: "auto", marginRight: "auto" }, onClick: () => {
+						for (const key of sessionKeys) if (labelOf(key) !== options.shownCwd) core.dispose(key);
+					} }, tr("关闭其他终端"))
+				));
+
+			// 页签形态：两行。第一行=状态点 + 连接状态 + 工作目录，第二行=shell 选择 +
+			// 操作按钮。页签标题由侧栏自己显示，这里不再重复标题、也不用固定的「收起」。
+			if (compact === true) {
+				return h(
+					"div",
+					{ className: "dsh-term-head dsh-term-head-compact" },
+					h("div", { className: "dsh-term-head-row" }, renderDot(options.status), statusNode, cwdNode, countNode),
+					h(
+						"div",
+						{ className: "dsh-term-head-row dsh-term-head-actions" },
+						shellSelect,
+						themeButton,
+						menuButton,
+						clearButton,
+						reconnectButton
+					)
+				);
+			}
+
+			const kids = [
+				renderDot(options.status),
+				statusNode,
+				h("span", { className: "dsh-term-title" }, tr("终端")),
+				cwdNode,
+				countNode
+			];
+			if (shellSelect !== null) kids.push(shellSelect);
+			kids.push(
+				h(
+					"button",
+					{
+						className: "dsh-term-btn",
+						onClick: options.onLayout,
+						title:
+							options.mode === MODE_DOCK
+								? tr("当前为并排：DSH 让出右侧空间。点击改为浮层覆盖")
+								: tr("当前为浮层：终端盖在 DSH 上。点击改为并排（DSH 让出空间）")
+					},
+					options.mode === MODE_DOCK ? tr("并排") : tr("浮层")
+				),
+				themeButton,
+				menuButton,
+				clearButton,
+				reconnectButton,
+				h("button", { className: "dsh-term-btn", onClick: options.onCollapse, title: tr("收起终端（Ctrl+`）") }, tr("收起"))
+			);
+			return h("div", { className: "dsh-term-head" }, ...kids);
+		}
+
+		/**
+		 * 复制/粘贴设置菜单。
+		 * @param options - 当前开关与回调。
+		 * @returns React 元素。
+		 */
+		function renderMenu(options) {
+			return h(
+				"div",
+				{ className: "dsh-term-menu", "data-dsh-terminal-menu": "1" },
+				h("span", { className: "dsh-term-menu-label" }, tr("复制/粘贴")),
+				...CLIPBOARD_OPTIONS.map((opt) =>
+					h(
+						"label",
+						{ className: "dsh-term-opt", key: opt.key, title: tr(opt.title) },
+						h("input", {
+							type: "checkbox",
+							checked: options.clipboard[opt.key] === true,
+							onChange: () => options.onToggle(opt.key)
+						}),
+						tr(opt.label)
+					)
+				),
+				h(
+					"span",
+					{ className: "dsh-term-menu-hint" },
+					tr("三个开关互相独立、可同时打开；Ctrl+C 只在有选中内容时复制，读取剪贴板需 localhost 或 HTTPS")
+				),
+				h("span", { className: "dsh-term-menu-label" }, tr("提示位置")),
+				...TOAST_POSITIONS.map((pos) =>
+					h(
+						"button",
+						{
+							key: pos.key,
+							className: "dsh-term-seg",
+							"data-active": options.clipboard.toastPos === pos.key ? "1" : "0",
+							title: tr(pos.title),
+							onClick: () => options.onToastPos(pos.key)
+						},
+						tr(pos.label)
+					)
+				)
+			);
+		}
+
+		/**
+		 * 终端主体：宿主容器 + 提示气泡 + 错误条。
+		 * @param options - 容器 ref、开关、气泡与错误。
+		 * @returns React 元素。
+		 */
+		function renderBody(options) {
+			const clipboard = options.clipboard;
+			return h(
+				"div",
+				{ className: "dsh-term-body" },
+				// 每个工作区一个宿主 div，由核心在 attach 时追加进来；
+				// 这里用独立容器，避免与 React 的子节点管理相互干扰。
+				h("div", { className: "dsh-term-hosts", ref: options.containerRef }),
+				options.toast !== ""
+					? h(
+							"div",
+							{
+								className: "dsh-term-toast",
+								"data-dsh-terminal-toast": "1",
+								"data-pos": clipboard.toastPos,
+								style:
+									clipboard.toastPos === "cursor" && options.toastAt !== null
+										? {
+												left: `${Math.max(8, Math.min(options.toastAt.x, (globalThis.innerWidth ?? 1024) - 200))}px`,
+												top: `${options.toastAt.y}px`
+											}
+										: undefined
+							},
+							options.toast
+						)
+					: null,
+				options.error !== "" ? h("div", { className: "dsh-term-err" }, options.error) : null
+			);
+		}
+		//#endregion
+
+		//#region 独立浮层面板（现有形态）
+		/**
+		 * 右侧常驻终端面板：**每个工作区各保留一个常驻 shell**。
+		 *
+		 * 组件注册在 root 作用域的 `shell.overlay` 列表槽里，因此对每个会话
+		 * （包括新建会话页）都存在，且切换会话不会卸载。内部按工作区目录维护
+		 * 多份终端：切换工作区只是切换显示哪一份，其它工作区的 shell 保持运行、
+		 * 滚动缓冲保持完整（终端核心在模块级，见 createTerminalCore）。
+		 * @param props - 槽注入属性，含全局 useSessions。
+		 * @returns 面板、悬浮开合按钮或 null（已接入官方侧栏时）。
+		 */
+		function TerminalPanel(props) {
+			const useSessions = props?.useSessions ?? fallbackUseSessions;
+			// 当前会话所属工作区目录：会话摘要里的 cwd 即 header.cwd 直通。
+			const wsCwd = useSessions((s) => {
+				if (s === undefined || s === null) return undefined;
+				const id = s.current;
+				if (id === undefined || id === null) return undefined;
+				const summary = s.byId === undefined ? undefined : s.byId[id];
+				return summary === undefined ? undefined : summary.cwd;
+			});
+			const activeKey = keyOf(wsCwd);
+
+			const [open, setOpen] = react.useState(readOpen);
+			const [width, setWidth] = react.useState(readWidth);
+			const [mode, setMode] = react.useState(readMode);
+			/** 复制/粘贴设置菜单是否展开。 */
+			const [menuOpen, setMenuOpen] = react.useState(false);
+			useMenuDismiss(menuOpen, setMenuOpen);
+			const [info, setInfo] = react.useState(null);
+
+			const settings = useSettings();
+			const integrationMode = useIntegrationMode();
+			const { toast, toastAt, flash, trackPointer } = useFlash();
+			// 订阅核心状态：连接状态/错误/常驻数量变化时重渲染工具条。
+			useCoreVersion();
+
+			/** 各工作区终端宿主的父容器（React 管理，尺寸稳定）。 */
+			const hostsRef = react.useRef(null);
+			const activeKeyRef = react.useRef(activeKey);
+			const aliveRef = react.useRef(false);
+			const visibleRef = react.useRef(open);
+
+			// 挂载：注入样式、拉取宿主信息。
+			react.useEffect(() => {
+				aliveRef.current = true;
+				ensureStyle();
+				(async () => {
+					const meta = await fetchInfo(activeKey);
+					if (!aliveRef.current) return;
+					setInfo(meta);
+				})();
+				return () => {
+					aliveRef.current = false;
+				};
+			}, []);
+
+			// 工作区变化：确保该工作区有常驻终端并切到它，其它工作区继续运行。
+			// 已接入官方侧栏页签时不再操作浮层容器。
+			react.useEffect(() => {
+				activeKeyRef.current = activeKey;
+				if (integrationMode !== "overlay") return;
+				const container = hostsRef.current;
+				if (container === null) return;
+				const s = core.attach(activeKey, container);
+				if (s !== null) s.notify = flash;
+				core.show(activeKey);
+				for (const key of core.keys()) {
+					if (key !== activeKey) core.hide(key);
+				}
+				raf(() => {
+					core.refit(activeKey);
+					if (visibleRef.current) core.focus(activeKey);
+				});
+			}, [activeKey, integrationMode, flash]);
+
+			// 展开/收起：隐藏不销毁，故 shell 与滚动缓冲都保留。
+			react.useEffect(() => {
+				visibleRef.current = open;
+				try {
+					globalThis.localStorage?.setItem(KEY_OPEN, open ? "1" : "0");
+				} catch {
+					/* 隐私模式。 */
+				}
+				if (!open) return;
+				raf(() => {
+					core.refit(activeKeyRef.current);
+					core.focus(activeKeyRef.current);
+				});
+			}, [open]);
+
+			// 面板宽度变化：重算行列数。
+			react.useEffect(() => {
+				core.refit(activeKeyRef.current);
+			}, [width]);
+
+			// 并排模式：把 DSH 的 AppFrame 整体收窄，让它的三栏自己重排，终端占住让出来的这一条。
+			// AppFrame 用 ResizeObserver 观测自身宽度来解算列宽，所以改 margin 就会触发正确重排
+			// （侧栏不妥协、正文保底、必要时自动关掉右侧详情栏），不会像浮层那样盖住内容。
+			react.useEffect(() => {
+				const overlay = document.querySelector("[data-shell-overlay]");
+				const frame = overlay != null ? overlay.parentElement : null;
+				if (frame === null) return;
+				// 折叠时不占位；浮层模式不占位；页签模式由侧栏管理布局。
+				const docked = open === true && mode === MODE_DOCK && canPortal() && integration.mode === "overlay";
+				frame.style.marginRight = docked ? `${width}px` : "";
+				return () => {
+					frame.style.marginRight = "";
+				};
+			}, [open, width, mode]);
+
+			// 记住布局模式。
+			react.useEffect(() => {
+				try {
+					globalThis.localStorage?.setItem(KEY_MODE, mode);
+				} catch {
+					/* 隐私模式。 */
+				}
+			}, [mode]);
+
+			// 全局按键处理：仅接管 Ctrl+`（含 Cmd+`），且只在浮层形态下生效。
+			// 接入官方侧栏后由侧栏自己的快捷键负责开合。
+			react.useEffect(() => {
+				if (integrationMode !== "overlay") return;
+				const onKey = (ev) => {
+					const key = ev.key;
+					const isTick = key === "`" || key === "~" || ev.code === "Backquote";
+					if (isTick && (ev.ctrlKey || ev.metaKey) && !ev.altKey) {
+						ev.preventDefault();
+						ev.stopPropagation();
+						setOpen((v) => !v);
+					}
+				};
+				globalThis.addEventListener("keydown", onKey, true);
+				return () => globalThis.removeEventListener("keydown", onKey, true);
+			}, [integrationMode]);
+
+			/**
+			 * 拖拽左侧把手调整面板宽度。
+			 * @param ev - pointerdown 事件。
+			 * @returns 无返回值。
+			 */
+			const onGripDown = react.useCallback(
+				(ev) => {
+					ev.preventDefault();
+					const startX = ev.clientX;
+					const startW = width;
+					/**
+					 * 拖动中的宽度更新。
+					 * @param e - pointermove 事件。
+					 * @returns 无返回值。
+					 */
+					const move = (e) => {
+						const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + (startX - e.clientX)));
+						setWidth(next);
+						core.refit(activeKeyRef.current);
+					};
+					/** 结束拖动并持久化宽度。 */
+					const up = () => {
+						globalThis.removeEventListener("pointermove", move);
+						globalThis.removeEventListener("pointerup", up);
+						const el = document.querySelector(".dsh-term-panel");
+						const finalWidth = el !== null ? Math.round(el.getBoundingClientRect().width) : startW;
+						try {
+							globalThis.localStorage?.setItem(KEY_WIDTH, String(finalWidth));
+						} catch {
+							/* 隐私模式。 */
+						}
+					};
+					globalThis.addEventListener("pointermove", move);
+					globalThis.addEventListener("pointerup", up);
+				},
+				[width]
+			);
+
+			// 暴露一个调试/测试入口，便于在控制台直接开合与查看各工作区终端。
+			react.useEffect(() => {
+				globalThis.__DSH_TERMINAL__ = {
+					open: () => setOpen(true),
+					close: () => setOpen(false),
+					toggle: () => setOpen((v) => !v),
+					reconnect: () => core.reconnect(activeKeyRef.current),
+					clear: () => core.clear(activeKeyRef.current),
+					sessions: () => core.keys().map(labelOf),
+					state: () => core.session(activeKeyRef.current)?.status ?? "wait",
+					mode: () => mode,
+					theme: () => getSettings().theme,
+					toggleTheme: () => toggleTheme(),
+					toggleLayout: () => setMode((m) => (m === MODE_DOCK ? MODE_OVERLAY : MODE_DOCK)),
+					frameMargin: () => {
+						const o = document.querySelector("[data-shell-overlay]");
+						return o != null && o.parentElement !== null ? o.parentElement.style.marginRight : "";
+					}
+				};
+			});
+
+			// 已作为侧栏页签挂载：浮层完全让位，避免出现两个终端。
+			if (integrationMode !== "overlay") return null;
+
+			const act = core.session(activeKey);
+			const state = act !== null ? act.status : "wait";
+			const error = act !== null ? act.error : "";
+			const shownCwd = typeof wsCwd === "string" && wsCwd !== "" ? wsCwd : (typeof info?.cwd === "string" ? info.cwd : labelOf(activeKey));
+			// 「后台终端」只统计/展示与当前终端同一环境（本机 / 各 WSL 发行版 / 各 SSH 主机）的终端。
+			const currentEnv = envOf(activeKey, info?.env);
+			const envKeys = core.keys().filter((key) => envOf(key) === currentEnv);
+			const count = envKeys.length;
+			const clipboard = settings.clipboard;
+
+			/** 面板主体（始终挂载，折叠时用 display:none 隐藏以保留所有 shell）。 */
+			const panel = h(
+				"div",
+				{
+					className: "dsh-term-panel",
+					"data-dsh-terminal-panel": "1",
+					"data-mode": mode,
+					"data-theme": settings.theme,
+					style: { width: `${width}px`, display: open ? "flex" : "none" },
+					// 记下指针位置，供提示气泡的「跟随鼠标」档与键盘触发的复制使用。
+					onPointerMove: trackPointer
+				},
+				h("div", { className: "dsh-term-grip", onPointerDown: onGripDown, title: tr("拖动调整宽度") }),
+				renderToolbar({
+					compact: false,
+					status: state,
+					statusTitle: error,
+					shownCwd,
+					count,
+					keys: envKeys,
+					shells: info !== null && Array.isArray(info.shells) ? info.shells : [],
+					shellId: getShellChoice(activeKey) || info?.detectedShell?.id || "",
+					detectedShell: info?.detectedShell,
+					onShell: (id) => {
+						setShellChoice(activeKey, id);
+						core.reconnect(activeKey);
+					},
+					menuOpen,
+					mode,
+					theme: settings.theme,
+					onTheme: toggleTheme,
+					onMenu: () => setMenuOpen((v) => !v),
+					onClear: () => core.clear(activeKey),
+					onReconnect: () => core.reconnect(activeKey),
+					onLayout: () => setMode((m) => (m === MODE_DOCK ? MODE_OVERLAY : MODE_DOCK)),
+					onCollapse: () => setOpen(false)
+				}),
+				menuOpen
+					? renderMenu({
+							clipboard,
+							onToggle: (key) => patchClipboard({ [key]: clipboard[key] !== true }),
+							onToastPos: (pos) => patchClipboard({ toastPos: pos })
+						})
+					: null,
+				renderBody({ containerRef: hostsRef, clipboard, toast, toastAt, error })
+			);
+
+			/** 折叠时的悬浮开合按钮。 */
+			const tab =
+				open === true
+					? null
+					: h(
+							"button",
+							{
+								className: "dsh-term-tab",
+								"data-theme": settings.theme,
+								onClick: () => setOpen(true),
+								title: tr("打开终端（Ctrl+`）")
+							},
+							renderDot(state),
+							tr("终端")
+						);
+
+			const tree = h(react.Fragment, null, panel, tab);
+			// 挂到 body：脱离 AppFrame 的 overflow:hidden，position:fixed 才能锚定视口右缘。
+			return canPortal() ? reactDom.createPortal(tree, document.body) : tree;
+		}
+		//#endregion
+
+		//#region 会话服务与图标
+
+		/**
+		 * 客户端 sessions 服务（会话列表 + 会话记录）。
+		 *
+		 * 本插件的 `inject` 只声明了 `slots`，没有注入 `sessions`，所以不能直接读
+		 * `ctx.sessions`；Cordis 允许用 `ctx.get(name)` 取已注册的服务。
+		 * @param ctx - 客户端上下文。
+		 * @returns sessions 服务或 undefined。
+		 */
+		function sessionsServiceOf(ctx) {
+			try {
+				if (typeof ctx?.get === "function") {
+					const fromGet = ctx.get("sessions");
+					if (fromGet !== undefined && fromGet !== null) return fromGet;
+				}
+				return ctx?.sessions;
+			} catch {
+				return undefined;
+			}
+		}
+
+		/**
+		 * 会话当前的工作目录（官方侧栏只会给出 sessionId）。
+		 * @param ctx - 客户端上下文（需要 sessions 服务）。
+		 * @param sessionId - 会话 id。
+		 * @returns 工作目录；会话服务不可用或没有 cwd 时返回 undefined。
+		 */
+		function sessionCwdOf(ctx, sessionId) {
+			if (typeof sessionId !== "string" || sessionId === "") return undefined;
+			try {
+				const sessions = sessionsServiceOf(ctx);
+				const snapshot = typeof sessions?.list?.getSnapshot === "function" ? sessions.list.getSnapshot() : undefined;
+				const summary = snapshot?.byId?.[sessionId];
+				if (typeof summary?.cwd === "string" && summary.cwd !== "") return summary.cwd;
+				const record = typeof sessions?.get === "function" ? sessions.get(sessionId) : undefined;
+				const cwd = record?.header?.cwd;
+				if (typeof cwd === "string" && cwd !== "") return cwd;
+			} catch {
+				/* 会话服务不可用时回退默认目录。 */
+			}
+			return undefined;
+		}
+
+		/**
+		 * 订阅会话列表变化（工作目录可能随会话切换而变）。
+		 * @param ctx - 客户端上下文。
+		 * @param listener - 变化回调。
+		 * @returns 取消订阅函数。
+		 */
+		function subscribeSessions(ctx, listener) {
+			try {
+				const unsubscribe = sessionsServiceOf(ctx)?.list?.subscribe?.(listener);
+				if (typeof unsubscribe === "function") return unsubscribe;
+			} catch {
+				/* 忽略：保持静态 cwd。 */
+			}
+			return () => {};
+		}
+
+		/**
+		 * 官方侧栏引导页卡片与页签图标：终端提示符折线。
+		 * @param props - { size } 图标尺寸。
+		 * @returns SVG 元素。
+		 */
+		function TerminalGlyph(props) {
+			const size = typeof props?.size === "number" ? props.size : 16;
+			return h(
+				"svg",
+				{
+					width: size,
+					height: size,
+					viewBox: "0 0 16 16",
+					fill: "none",
+					stroke: "currentColor",
+					"stroke-width": 1.4,
+					"stroke-linecap": "round",
+					"stroke-linejoin": "round",
+					"aria-hidden": "true"
+				},
+				h("path", { d: "M2.5 3.8 6.8 8l-4.3 4.2" }),
+				h("path", { d: "M8.6 12.2h4.9" })
+			);
+		}
+
+		//#endregion
+
+		//#region 官方右侧栏页签形态（DSH 自带 sidebar-right）
+		/**
+		 * 作为 DSH 官方右侧栏页签渲染的终端。
+		 *
+		 * 官方侧栏只提供 sessionId（正文槽位的 inject 工厂），工作目录从
+		 * `ctx.sessions` 的会话摘要里读；页签自己的位置/宽度/开合都由官方
+		 * 侧栏管理，这里只保留终端本体与紧凑工具条。
+		 * @param props - 官方侧栏正文槽位的属性（sessionId/cwdOf/subscribeSessions 由 inject 注入）。
+		 * @returns 终端页签。
+		 */
+		function OfficialTerminalTab(props) {
+			const sessionId = typeof props?.sessionId === "string" ? props.sessionId : "";
+			const useTabInfo = props?.useTabInfo;
+			const tabInfo = typeof useTabInfo === "function" ? useTabInfo() : null;
+			const visible = tabInfo?.tab?.visible !== false;
+			const signal = tabInfo?.tab?.signal;
+
+			/** 当前会话的工作目录；会话服务变化时刷新。 */
+			const [cwd, setCwd] = react.useState(() => (typeof props?.cwdOf === "function" ? props.cwdOf() : undefined));
+			react.useEffect(() => {
+				setCwd(typeof props?.cwdOf === "function" ? props.cwdOf() : undefined);
+				return subscribeSessionsFromProps(props, setCwd);
+			}, [sessionId]);
+
+			const activeKey = keyOf(cwd);
+			if (sessionId !== "" && typeof props?.onKey === "function") props.onKey(activeKey);
+
+			const settings = useSettings();
+			const { toast, toastAt, flash, trackPointer } = useFlash();
+			// 订阅核心状态：连接状态/错误/常驻数量变化时重渲染工具条。
+			useCoreVersion();
+			const [menuOpen, setMenuOpen] = react.useState(false);
+			useMenuDismiss(menuOpen, setMenuOpen);
+			/** 宿主能力（可用 shell 列表等）；页签里用于渲染 shell 下拉。 */
+			const [info, setInfo] = react.useState(null);
+			const containerRef = react.useRef(null);
+
+			// 拉取宿主信息：/info 里的 shells 是宿主探测到的可用 shell 目录。
+			react.useEffect(() => {
+				let alive = true;
+				(async () => {
+					const meta = await fetchInfo(activeKey);
+					if (alive) setInfo(meta);
+				})();
+				return () => {
+					alive = false;
+				};
+			}, [activeKey]);
+
+			// 挂进页签容器；页签真正关闭（tab.signal 中止）时结束该工作区的 PTY。
+			react.useEffect(() => {
+				const container = containerRef.current;
+				if (container === null) return;
+				const s = core.attach(activeKey, container);
+				if (s !== null) s.notify = flash;
+				raf(() => core.refit(activeKey));
+				return () => {
+					if (s !== null) s.notify = null;
+					core.detach(activeKey);
+				};
+			}, [activeKey, flash]);
+
+			// 页签关闭（记录销毁）→ 回收 PTY；仅收起/切会话不会中止 signal。
+			react.useEffect(() => {
+				if (signal === undefined || signal === null) return;
+				if (signal.aborted === true) {
+					core.dispose(activeKey);
+					return;
+				}
+				const onAbort = () => core.dispose(activeKey);
+				signal.addEventListener("abort", onAbort);
+				return () => signal.removeEventListener("abort", onAbort);
+			}, [signal, activeKey]);
+
+			// 页签重新可见时重算行列数并聚焦。
+			react.useEffect(() => {
+				if (!visible) return;
+				raf(() => {
+					core.refit(activeKey);
+					core.focus(activeKey);
+				});
+			}, [visible, activeKey]);
+
+			const act = core.session(activeKey);
+			const state = act !== null ? act.status : "wait";
+			const error = act !== null ? act.error : "";
+			const shownCwd = labelOf(activeKey);
+			// 只显示/统计当前环境（本机 / 各 WSL 发行版 / 各 SSH 主机）的后台终端。
+			const currentEnv = envOf(activeKey, info?.env);
+			const envKeys = core.keys().filter((key) => envOf(key) === currentEnv);
+			const count = envKeys.length;
+			const clipboard = settings.clipboard;
+
+			return h(
+				"div",
+				{
+					className: "dsh-term-embed",
+					"data-dsh-terminal-embed": "official",
+					"data-theme": settings.theme,
+					onPointerMove: trackPointer
+				},
+				renderToolbar({
+					compact: true,
+					status: state,
+					statusTitle: error,
+					shownCwd,
+					count,
+					keys: envKeys,
+					shells: info !== null && Array.isArray(info.shells) ? info.shells : [],
+					shellId: getShellChoice(activeKey) || info?.detectedShell?.id || "",
+					detectedShell: info?.detectedShell,
+					onShell: (id) => {
+						setShellChoice(activeKey, id);
+						core.reconnect(activeKey);
+					},
+					menuOpen,
+					mode: MODE_DOCK,
+					theme: settings.theme,
+					onTheme: toggleTheme,
+					onMenu: () => setMenuOpen((v) => !v),
+					onClear: () => core.clear(activeKey),
+					onReconnect: () => core.reconnect(activeKey),
+					onLayout: () => {},
+					onCollapse: () => {}
+				}),
+				menuOpen
+					? renderMenu({
+							clipboard,
+							onToggle: (key) => patchClipboard({ [key]: clipboard[key] !== true }),
+							onToastPos: (pos) => patchClipboard({ toastPos: pos })
+						})
+					: null,
+				renderBody({ containerRef, clipboard, toast, toastAt, error })
+			);
+		}
+
+		/**
+		 * 订阅会话列表（由官方侧栏注入的 subscribeSessions）。
+		 * @param props - 正文槽位属性。
+		 * @param setCwd - 刷新 cwd 的回调。
+		 * @returns 清理函数。
+		 */
+		function subscribeSessionsFromProps(props, setCwd) {
+			try {
+				const unsubscribe = props?.subscribeSessions?.(() => {
+					if (typeof props?.cwdOf === "function") setCwd(props.cwdOf());
+				});
+				return typeof unsubscribe === "function" ? unsubscribe : () => {};
+			} catch {
+				return () => {};
+			}
+		}
+		//#endregion
+
+		//#region 插件入口
+		/** 需要的客户端服务：槽注册表（浮层面板与官方侧栏页签都在这里注册）。 */
+		const inject = ["slots"];
+
+		/**
+		 * 注册为 DSH 官方右侧栏（sidebar-right）的页签类型。
+		 *
+		 * 只走公开扩展点：
+		 * - `ctx.sidebarRightTabs.register()` 以 `priority: "extension"` 注册 kind
+		 *   `"terminal"`，接管内置终端（builtin）：接管后开始页只留一个「新建终端」
+		 *   入口，正文、标题槽与 Ctrl+` 快捷键都落到本插件；扩展卸载时内置定义自动恢复；
+		 * - `ctx.slots.register({ name: "sidebar.right.pane.tab", key: 类型 id })`
+		 *   注册正文组件（正文槽按「生效定义的 id」查找，key 必须是本插件 id）；
+		 * - 关闭钩子由内置终端占用（同一 kind 只允许一个，重复注册会抛错），本插件
+		 *   不再注册；PTY 由正文组件的 `tab.signal` 中止回收。
+		 * @param ctx - 客户端上下文（需 sidebarRightTabs/slots；可选 sessions/sidebarRight）。
+		 * @returns 是否成功接管界面。
+		 */
+		function applyOfficialSidebar(ctx) {
+			const getService = (name) => (typeof ctx.get === "function" ? ctx.get(name) : undefined);
+			const tabs = getService(OFFICIAL_TABS_SERVICE);
+			if (tabs === undefined || tabs === null || typeof tabs.register !== "function") return false;
+			const slots = ctx.slots;
+			if (slots === undefined || slots === null || typeof slots.register !== "function") return false;
+
+			/**
+			 * 读取此刻仍在生效的内置终端定义（本插件注册前，builtin 就是当前生效者）。
+			 *
+			 * 接管只接管「谁响应 kind」，外观与文案必须和内置卡片一字不差：标题、
+			 * 图标、描述、排序全部直接复用内置定义的字段——它们是官方 locale 的
+			 * thunk 与官方图标组件，切换语言、官方换图标都会自动跟随，不需要本插件
+			 * 自己再写一份文案或图形。
+			 * @returns 内置定义；读不到（注册顺序更早、服务不支持 get）时为 null。
+			 */
+			function heldDefinition() {
+				try {
+					const held = typeof tabs.get === "function" ? tabs.get(OFFICIAL_KIND) : undefined;
+					if (held === null || held === undefined || held.kind !== OFFICIAL_KIND) return null;
+					if (typeof held.title !== "function" || !Array.isArray(held.guide)) return null;
+					return held;
+				} catch {
+					return null;
+				}
+			}
+
+			const held = heldDefinition();
+			/**
+			 * 官方开始页卡片/页签用的终端图形组件（`PluginArtworkTerminal`）。
+			 *
+			 * 冷启动时本插件可能先于内置终端插件注册，读不到内置定义；但官方
+			 * primitives 是 Web 端的「平台种子模块」（`__ModuleLoader__` 的
+			 * staticModules 里），任何插件都能 require 到同一个组件实例，
+			 * 所以即使拿不到内置定义，卡片图形仍与原生完全一致。
+			 * @returns 图标组件；种子模块不可用时退回本插件的折线图形。
+			 */
+			function cardIcon() {
+				try {
+					const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
+					const artwork = primitives === null || primitives === undefined ? undefined : primitives.PluginArtworkTerminal;
+					if (typeof artwork === "function") return artwork;
+				} catch {
+					// 宿主没有提供该种子模块（非官方 Web 端）：退回自带图形。
+				}
+				return TerminalGlyph;
+			}
+			/**
+			 * 与内置终端完全一致的引导卡片：能读到内置定义就直接用它那条 guide 条目，
+			 * 只有读不到时才用官方的图标组件与同款中文文案。
+			 */
+			const guide = held === null
+				? [
+					{
+						id: "new",
+						order: 20,
+						// 让卡片右下角显示官方「新建终端」的快捷键（Ctrl+`）。
+						commandId: "terminal.new",
+						title: () => tr("新建终端"),
+						description: () => tr("在会话工作区运行命令"),
+						icon: cardIcon()
+					}
+				]
+				: held.guide.map((entry) => {
+					// 内置卡片不写 commandId（它的快捷键硬编码在官方组件里），这里补上，
+					// 让默认卡片右下角同样显示 Ctrl+`。
+					const commandId = typeof entry.commandId === "string" ? entry.commandId : "terminal.new";
+					return { ...entry, commandId };
+				});
+			const definition = {
+				id: OFFICIAL_TYPE_ID,
+				kind: OFFICIAL_KIND,
+				// 一个会话只留一个终端页：PTY 按工作目录复用，多开只会互相抢同一个终端。
+				multiple: false,
+				keepMounted: true,
+				priority: "extension",
+				title: held === null ? () => tr("终端") : held.title,
+				guide
+			};
+			try {
+				if (typeof ctx.effect === "function") {
+					ctx.effect(() => tabs.register(definition), "ui-terminal.official-type");
+				} else {
+					tabs.register(definition);
+				}
+			} catch (error) {
+				console.error("[remote-suite] 注册官方侧栏页签类型失败，回退到浮层面板：", error);
+				return false;
+			}
+
+			slots.inject("sidebar.right.pane.tab", () =>
+				slots.register(
+					{
+						name: "sidebar.right.pane.tab",
+						key: OFFICIAL_TYPE_ID,
+						inject: (sessionId) => ({
+							sessionId,
+							cwdOf: () => sessionCwdOf(ctx, sessionId),
+							subscribeSessions: (listener) => subscribeSessions(ctx, listener)
+						})
+					},
+					OfficialTerminalTab
+				)
+			);
+
+			integration.set("sidebar");
+			return true;
+		}
+
+		/**
+		 * 挂载原来的独立浮层面板（root 作用域的 `shell.overlay` 列表槽）。
+		 *
+		 * 用 `slots.inject()` 而不是直接 register，是因为目标槽的声明可能由
+		 * ui-layout 稍后激活或被替换；inject 会在槽存在时再执行注册，并在槽
+		 * 重新声明后自动重放。
+		 * @param ctx - 客户端根上下文。
+		 * @returns 无返回值。
+		 */
+		function mountOverlay(ctx) {
+			if (ctx.slots === undefined || ctx.slots === null || typeof ctx.slots.inject !== "function") {
+				console.error("[remote-suite] 当前客户端没有 slots 服务，无法挂载独立终端面板。");
+				return;
+			}
+			ctx.slots.inject("shell.overlay", function* () {
+				try {
+					yield ctx.slots.register({ name: "shell.overlay", id: "terminal", order: 100 }, TerminalPanel);
+				} catch (error) {
+					console.error("[remote-suite] 注册 shell.overlay 槽失败：", error);
+				}
+			});
+		}
+
+		/**
+		 * 客户端插件主体（按可用能力选择唯一一种 UI 形态）：
+		 * 1. DSH 官方右侧栏（0.2.2+ 自带）→ 以扩展档接管内置终端 kind；
+		 * 2. 没有官方右侧栏 → 独立浮层面板兜底。
+		 *
+		 * 不把 sidebarRightTabs 写死进 exports.inject：否则缺少该服务的环境会一直
+		 * 等注入、连浮层都加载不出来。这里用 ctx.get 探测，并用 ctx.inject 兜住
+		 * 「服务稍后才激活」的顺序问题。
+		 * @param ctx - 客户端根上下文。
+		 * @returns 无返回值。
+		 */
+		function apply(ctx) {
+			try {
+				ensureStyle();
+			} catch (error) {
+				console.error("[remote-suite] 注入样式失败：", error);
+			}
+
+			// 主题切换同步到所有常驻终端；插件卸载时回收全部 PTY 会话。
+			subscribeSettings((next) => core.applyTheme(themeOf(next.theme)));
+			if (typeof ctx.effect === "function") {
+				ctx.effect(() => () => core.disposeAll());
+			}
+
+			// 1) 官方右侧栏：DSH 0.2.2+ 自带，接管内置终端 kind 是主形态。
+			if (typeof ctx.get === "function") {
+				const official = ctx.get(OFFICIAL_TABS_SERVICE);
+				if (official !== undefined && official !== null && typeof official.register === "function") {
+					// 官方侧栏存在时只走官方扩展点：接管失败就退浮层，避免出现两个终端入口。
+					if (applyOfficialSidebar(ctx)) return;
+					mountOverlay(ctx);
+					return;
+				}
+			}
+
+			// 2) 没有官方侧栏：独立浮层面板兜底。
+			mountOverlay(ctx);
+
+			// 服务晚到时再接管一次（官方侧栏可能与本插件并发加载），避免停留在浮层。
+			if (typeof ctx.inject === "function") {
+				ctx.inject([OFFICIAL_TABS_SERVICE], (injected) => {
+					if (integration.mode === "sidebar") return;
+					const official = typeof injected.get === "function" ? injected.get(OFFICIAL_TABS_SERVICE) : undefined;
+					if (official === undefined || official === null || typeof official.register !== "function") return;
+					if (applyOfficialSidebar(injected)) return;
+					console.error("[remote-suite] 切换官方右侧栏失败，保持浮层形态");
+				});
+			}
+		}
+		//#endregion
+
+
+		exports.apply = apply;
+		exports.ensureStyle = ensureStyle;
+		exports.disposeAll = () => core.disposeAll();
+		exports.OfficialTerminalTab = OfficialTerminalTab;
+		exports.sessionCwdOf = sessionCwdOf;
+		exports.subscribeSessions = subscribeSessions;
+		exports.TerminalGlyph = TerminalGlyph;
+		exports.constants = {
+			OFFICIAL_KIND,
+			OFFICIAL_TYPE_ID,
+			OFFICIAL_TABS_SERVICE,
+			INFO_PATH,
+			WS_PATH,
+		};
+		return module.exports;
+    })()
+
+    // ---------------------------------------------------------------------
+    // Takeover switches
+    //
+    // Two of the Host's own panes are replaced by this plugin: the workspace
+    // file tree and the terminal. Both replacements are optional, both default
+    // to on, and both live in state.json beside the workspaces so one file
+    // describes the whole plugin.
+    //
+    // A pane can be claimed by one extension at a time — the registry throws on
+    // a second claim — so a refused claim switches that toggle off and records
+    // who holds the pane instead of leaving the UI in a lie. Turning the toggle
+    // back on retries, which is also how a user recovers after uninstalling
+    // whichever plugin was holding it.
+    // ---------------------------------------------------------------------
+
+    const FILES_TAB_ID = PANEL_ID + '/files'
+    const TERMINAL_TAB_ID = PANEL_ID + '/terminal'
+    const TAKEOVER_IDS = { files: FILES_TAB_ID, terminal: TERMINAL_TAB_ID }
+    // dsh-better-sidebar claims the `files` kind at extension level. The host
+    // allows exactly one extension per kind and the loser throws, so when it is
+    // installed it keeps that pane and we keep supplying the data (its file pane
+    // already calls the /sidebar/api routes mounted by this plugin). The terminal
+    // kind is ours either way: better-sidebar's terminal is part of its own
+    // layout, not a right-sidebar tab.
+    const BETTER_SIDEBAR_ID = 'dsh-better-sidebar'
+
+    let takeoverSettings = { takeOverFiles: true, takeOverTerminal: true }
+    const takeoverHolders = { files: null, terminal: null }
+    const takeoverListeners = new Set()
+    const takeoverMounts = { files: null, terminal: null }
+    let takeoverCtx = null
+
+    function takeoverSnapshot() {
+      return takeoverSettings
+    }
+
+    function subscribeTakeover(listener) {
+      takeoverListeners.add(listener)
+      return () => takeoverListeners.delete(listener)
+    }
+
+    function emitTakeover(patch) {
+      takeoverSettings = { ...takeoverSettings, ...patch }
+      for (const listener of [...takeoverListeners]) {
+        try {
+          listener()
+        } catch (error) {
+          console.error('dsh-remote-suite: a takeover listener threw', error)
+        }
+      }
+    }
+
+    function useTakeoverSettings() {
+      return React.useSyncExternalStore(subscribeTakeover, takeoverSnapshot, takeoverSnapshot)
+    }
+
+    function sidebarTabs(ctx) {
       try {
-        ctx.inject(['sidebarRightTabs'], (scoped) => {
-          const id = PANEL_ID + '/files'
-          scoped.effect(() => {
-            let stopped = false
-            const timer = setTimeout(() => {
-              if (stopped) return
-              // Two `extension` bands for the same kind make the second
-              // registration throw ("tab kind ... is already registered"), so
-              // whoever is already in force keeps the kind. The Host's own pane
-              // sits in the `builtin` band, which an extension is meant to
-              // replace — deferring to it would leave the remote pane dead.
-              const held = typeof scoped.sidebarRightTabs.get === 'function'
-                ? scoped.sidebarRightTabs.get('files')
-                : undefined
-              const heldBand = held === undefined ? undefined : held.priority ?? 'extension'
-              if (held !== undefined && held.id !== id && heldBand === 'extension') {
-                console.warn(
-                  '[dsh-remote-suite] 右侧栏 files 页签已被 ' + String(held.id || '另一个插件') + ' 占用，跳过注册',
-                )
-                return
-              }
-              // better-sidebar's panel is preferred when installed: our host
-              // answers its `/sidebar/api/*` calls with remote files, so its UI
-              // already shows the remote tree.
-              if (betterSidebarLoaded(ctx)) {
-                console.info(
-                  '[dsh-remote-suite] 检测到 dsh-better-sidebar，右侧栏沿用它的文件面板（数据仍由本插件提供）',
-                )
-                return
-              }
-              scoped.effect(
-                () =>
-                  scoped.sidebarRightTabs.register({
-                    id,
-                    kind: 'files',
-                    keepMounted: true,
-                    priority: 'extension',
-                    title: () => tr('文件'),
-                    guide: [
-                      {
-                        id: 'files',
-                        order: 10,
-                        title: () => tr('文件'),
-                        description: () => tr('浏览工作区文件树，点开即预览或编辑'),
-                        icon: filesGuideIcon,
-                      },
-                    ],
-                  }),
-                'dsh-remote-suite: files tab type',
-              )
-              scoped.effect(
-                () =>
-                  scoped.slots.inject('sidebar.right.pane.tab', () =>
-                    scoped.slots.register(
-                      {
-                        name: 'sidebar.right.pane.tab',
-                        key: id,
-                        inject: (sessionId) => ({ sessionId }),
-                      },
-                      FilesPanel,
-                    ),
-                  ),
-                'dsh-remote-suite: files tab body',
-              )
-            }, FILES_CLAIM_DELAY_MS)
-            return () => {
-              stopped = true
-              clearTimeout(timer)
-            }
-          }, 'dsh-remote-suite: files tab claim')
+        const tabs = typeof ctx.get === 'function' ? ctx.get('sidebarRightTabs') : ctx.sidebarRightTabs
+        if (tabs === undefined || tabs === null || typeof tabs.register !== 'function') return null
+        return tabs
+      } catch {
+        return null
+      }
+    }
+
+    /** Who is currently answering `kind`, or null when nobody is. */
+    function heldPane(ctx, kind) {
+      const tabs = sidebarTabs(ctx)
+      if (tabs === null || typeof tabs.get !== 'function') return null
+      try {
+        const held = tabs.get(kind)
+        if (held === undefined || held === null) return null
+        return { id: String(held.id ?? ''), band: held.priority ?? 'extension', definition: held }
+      } catch {
+        return null
+      }
+    }
+
+    function terminalCardIcon() {
+      try {
+        const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
+        const artwork = primitives === null || primitives === undefined ? undefined : primitives.PluginArtworkTerminal
+        if (typeof artwork === 'function') return artwork
+      } catch {
+        // Non-web hosts have no primitives seed module; fall back to our glyph.
+      }
+      return remoteTerminal.TerminalGlyph
+    }
+
+    function mountFilesPane(ctx, tabs) {
+      const disposers = []
+      disposers.push(
+        tabs.register({
+          id: FILES_TAB_ID,
+          kind: 'files',
+          keepMounted: true,
+          priority: 'extension',
+          title: () => tr('文件'),
+          guide: [
+            {
+              id: 'files',
+              order: 10,
+              title: () => tr('文件'),
+              description: () => tr('浏览工作区文件树，点开即预览或编辑'),
+              icon: filesGuideIcon,
+            },
+          ],
+        }),
+      )
+      disposers.push(
+        ctx.slots.inject('sidebar.right.pane.tab', () =>
+          ctx.slots.register(
+            { name: 'sidebar.right.pane.tab', key: FILES_TAB_ID, inject: (sessionId) => ({ sessionId }) },
+            FilesPanel,
+          ),
+        ),
+      )
+      return disposers
+    }
+
+    function mountTerminalPane(ctx, tabs) {
+      // Reuse the built-in definition's title, guide and artwork when it is
+      // readable, so the tab and its start card stay identical to the pane
+      // being replaced and follow the host locale automatically.
+      const held = heldPane(ctx, 'terminal')
+      const builtin = held === null ? null : held.definition
+      const usable = builtin !== null && typeof builtin.title === 'function' && Array.isArray(builtin.guide)
+      const guide = usable
+        ? builtin.guide.map((entry) => ({
+            ...entry,
+            commandId: typeof entry.commandId === 'string' ? entry.commandId : 'terminal.new',
+          }))
+        : [
+            {
+              id: 'new',
+              order: 20,
+              commandId: 'terminal.new',
+              title: () => tr('新建终端'),
+              description: () => tr('在会话工作区运行命令'),
+              icon: terminalCardIcon(),
+            },
+          ]
+      const disposers = []
+      disposers.push(
+        tabs.register({
+          id: TERMINAL_TAB_ID,
+          kind: 'terminal',
+          multiple: false,
+          keepMounted: true,
+          priority: 'extension',
+          title: usable ? builtin.title : () => tr('终端'),
+          guide,
+        }),
+      )
+      disposers.push(
+        ctx.slots.inject('sidebar.right.pane.tab', () =>
+          ctx.slots.register(
+            {
+              name: 'sidebar.right.pane.tab',
+              key: TERMINAL_TAB_ID,
+              inject: (sessionId) => ({
+                sessionId,
+                cwdOf: () => remoteTerminal.sessionCwdOf(ctx, sessionId),
+                subscribeSessions: (listener) => remoteTerminal.subscribeSessions(ctx, listener),
+              }),
+            },
+            remoteTerminal.OfficialTerminalTab,
+          ),
+        ),
+      )
+      return disposers
+    }
+
+    function disposeTakeover(kind) {
+      const current = takeoverMounts[kind]
+      takeoverMounts[kind] = null
+      if (takeoverHolders[kind] === TAKEOVER_IDS[kind]) takeoverHolders[kind] = null
+      if (current === null) return
+      for (const dispose of current.slice().reverse()) {
+        try {
+          if (typeof dispose === 'function') dispose()
+        } catch (error) {
+          console.warn('[dsh-remote-suite] 释放 ' + kind + ' 接管失败', error)
+        }
+      }
+    }
+
+    function persistTakeover(patch) {
+      return call('settings-set', patch).catch((error) => {
+        console.warn('[dsh-remote-suite] 保存接管设置失败', error)
+        return null
+      })
+    }
+
+    /**
+     * Bring the live registrations in line with the switches: mount what is on
+     * and not yet mounted, unmount what is off, and switch a pane off when its
+     * extension slot belongs to someone else.
+     */
+    /**
+     * True when dsh-better-sidebar is loaded: it exposes a `betterSidebar`
+     * service. It claims the `files` tab kind, and the host refuses the second
+     * extension-level claim, so taking that pane over would only make it throw.
+     */
+    function betterSidebarLoaded(ctx) {
+      try {
+        return ctx !== null && ctx !== undefined && typeof ctx.get === 'function' && ctx.get('betterSidebar') !== undefined
+      } catch {
+        return false
+      }
+    }
+
+    function applyTakeovers(ctx) {
+      takeoverCtx = ctx
+      const tabs = sidebarTabs(ctx)
+      if (tabs === null) return
+      const betterSidebar = betterSidebarLoaded(ctx)
+      for (const kind of ['files', 'terminal']) {
+        const enabled = kind === 'files' ? takeoverSettings.takeOverFiles : takeoverSettings.takeOverTerminal
+        if (!enabled) {
+          disposeTakeover(kind)
+          // Whoever holds the slot now (usually DSH's builtin) is the label.
+          const after = heldPane(ctx, kind)
+          takeoverHolders[kind] = after === null || after.id === TAKEOVER_IDS[kind] || after.band !== 'extension'
+            ? null
+            : after.id
+          continue
+        }
+        // dsh-better-sidebar only claims the `files` kind (its terminal lives in
+        // its own layout, not as a right-sidebar tab), so the file pane is the
+        // only one it can lose a registration race over.
+        if (betterSidebar && kind === 'files') {
+          // Let it draw the pane; the switch still means "this plugin supplies
+          // the files", which is what /sidebar/api does for its file pane.
+          disposeTakeover(kind)
+          if (takeoverHolders[kind] !== BETTER_SIDEBAR_ID) {
+            takeoverHolders[kind] = BETTER_SIDEBAR_ID
+            console.info('[dsh-remote-suite] dsh-better-sidebar 已安装，文件页签由它显示，数据仍由本插件提供')
+          }
+          continue
+        }
+        if (takeoverMounts[kind] !== null) continue
+        const held = heldPane(ctx, kind)
+        if (held !== null && held.band === 'extension' && held.id !== TAKEOVER_IDS[kind]) {
+          takeoverHolders[kind] = held.id
+          emitTakeover(kind === 'files' ? { takeOverFiles: false } : { takeOverTerminal: false })
+          // The terminal plugin this feature came from is merged into this one:
+          // say so instead of leaving a bare "someone else holds it".
+          const merged = kind === 'terminal' && /dsh-terminal/.test(held.id)
+          console.warn(
+            '[dsh-remote-suite] 右侧栏 ' + kind + ' 页签已被 ' + held.id + ' 占用，这项接管已自动关闭' +
+              (merged ? '（终端功能已并入本插件，卸掉 @lylgj/dsh-terminal 后本插件即可接管）' : ''),
+          )
+          void persistTakeover(kind === 'files' ? { takeOverFiles: false } : { takeOverTerminal: false })
+          continue
+        }
+        try {
+          takeoverMounts[kind] = kind === 'files' ? mountFilesPane(ctx, tabs) : mountTerminalPane(ctx, tabs)
+          takeoverHolders[kind] = TAKEOVER_IDS[kind]
+        } catch (error) {
+          console.error('dsh-remote-suite: the ' + kind + ' takeover could not be registered', error)
+          takeoverHolders[kind] = held === null ? null : held.id
+          emitTakeover(kind === 'files' ? { takeOverFiles: false } : { takeOverTerminal: false })
+          void persistTakeover(kind === 'files' ? { takeOverFiles: false } : { takeOverTerminal: false })
+        }
+      }
+      emitTakeover({})
+    }
+
+    async function readTakeoverSettings(ctx) {
+      // Nothing to reconcile against when the host cannot be reached (a pasted
+      // page served from elsewhere, or a test harness): keep the defaults.
+      if (typeof fetch !== 'function') return
+      try {
+        const value = await call('settings')
+        emitTakeover({
+          takeOverFiles: value === null || value === undefined ? true : value.takeOverFiles !== false,
+          takeOverTerminal: value === null || value === undefined ? true : value.takeOverTerminal !== false,
         })
+        applyTakeovers(ctx)
       } catch (error) {
-        console.error('dsh-remote-suite: this DSH has no sidebarRightTabs service', error)
+        console.warn('[dsh-remote-suite] 读取接管设置失败，沿用默认（都接管）', error)
+      }
+    }
+
+    function toggleTakeover(kind, enabled) {
+      emitTakeover(kind === 'files' ? { takeOverFiles: enabled } : { takeOverTerminal: enabled })
+      applyTakeovers(takeoverCtx)
+      void persistTakeover(kind === 'files' ? { takeOverFiles: enabled } : { takeOverTerminal: enabled })
+    }
+
+    function holderLabel(kind, enabled) {
+      if (kind === 'files' && takeoverHolders[kind] === BETTER_SIDEBAR_ID) {
+        return tr('当前：dsh-better-sidebar 的面板（数据由本插件提供）')
+      }
+      if (enabled) return tr('当前：本插件接管')
+      const holder = takeoverHolders[kind]
+      if (holder === null || holder === '') return tr('当前：DSH 自带')
+      return tr('当前：{name} 接管', { name: holder })
+    }
+
+    /** Row glyph for the takeover switches: a folder or a terminal card. */
+    function settingsGlyph(kind) {
+      const common = { width: 18, height: 18, viewBox: '0 0 16 16', 'aria-hidden': 'true', fill: 'none' }
+      if (kind === 'files') {
+        return h(
+          'svg',
+          common,
+          h('path', {
+            d: 'M1.9 4.1c0-.6.5-1.1 1.1-1.1h3.2l1.4 1.7h5.4c.6 0 1.1.5 1.1 1.1v6.6c0 .6-.5 1.1-1.1 1.1H3c-.6 0-1.1-.5-1.1-1.1V4.1Z',
+            stroke: 'currentColor',
+            strokeWidth: 1.25,
+            strokeLinejoin: 'round',
+          }),
+        )
+      }
+      return h(
+        'svg',
+        common,
+        h('rect', {
+          x: 1.7,
+          y: 2.6,
+          width: 12.6,
+          height: 10.8,
+          rx: 2,
+          stroke: 'currentColor',
+          strokeWidth: 1.25,
+        }),
+        h('path', {
+          d: 'M4.4 6.1 6.6 8l-2.2 1.9M8.3 10.2h3.4',
+          stroke: 'currentColor',
+          strokeWidth: 1.25,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        }),
+      )
+    }
+
+    function TakeoverSettings() {
+      useTakeoverSettings()
+      const rows = [
+        {
+          kind: 'files',
+          enabled: takeoverSettings.takeOverFiles,
+          title: tr('接管工作区文件'),
+          hint: tr('本机 / WSL / SSH / Docker'),
+        },
+        {
+          kind: 'terminal',
+          enabled: takeoverSettings.takeOverTerminal,
+          title: tr('接管终端'),
+          hint: tr('cmd / PowerShell / WSL / SSH'),
+        },
+      ]
+      return h(
+        'div',
+        { className: 'rs-set' },
+        rows.map((row) =>
+          h(
+            'div',
+            { className: 'rs-set-row', key: row.kind },
+            h('div', { className: 'rs-set-glyph' }, settingsGlyph(row.kind)),
+            h(
+              'div',
+              { className: 'rs-set-main' },
+              h('div', { className: 'rs-set-title' }, row.title),
+              h('div', { className: 'rs-set-hint' }, row.hint),
+              h(
+                'div',
+                { className: 'rs-set-state' + (row.enabled && takeoverHolders[row.kind] !== BETTER_SIDEBAR_ID ? ' is-on' : '') },
+                holderLabel(row.kind, row.enabled),
+              ),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                role: 'switch',
+                'aria-checked': row.enabled ? 'true' : 'false',
+                className: 'rs-set-switch' + (row.enabled ? ' is-on' : ''),
+                onClick: () => toggleTakeover(row.kind, !row.enabled),
+              },
+              h('span', { className: 'rs-set-knob' }),
+            ),
+          ),
+        ),
+        h('p', { className: 'rs-set-foot' }, tr('改动立即生效，不需要重启。')),
+      )
+    }
+
+    function registerTakeoverSettings(ctx, stops) {
+      try {
+        stops.push(
+          ctx.slots.inject('settings.section', () =>
+            ctx.slots.register(
+              { name: 'settings.section', id: PANEL_ID, order: 60, label: () => tr('接管设置') },
+              TakeoverSettings,
+            ),
+          ),
+        )
+      } catch (error) {
+        console.error('dsh-remote-suite: the takeover settings section could not mount', error)
       }
     }
 
@@ -4736,11 +7586,29 @@ window.__ModuleLoader__.load({
         }
       }
       registerSeats(ctx, stops)
-      registerFilesTab(ctx)
+      registerTakeoverSettings(ctx, stops)
+      // The terminal pane's stylesheet (and its xterm asset loader) lives in the
+      // merged bundle; the pane itself is registered by applyTakeovers below.
+      try {
+        remoteTerminal.ensureStyle()
+      } catch (error) {
+        console.error('dsh-remote-suite: the terminal styles could not be injected', error)
+      }
+      if (typeof ctx.effect === 'function') {
+        ctx.effect(() => () => remoteTerminal.disposeAll(), 'dsh-remote-suite: terminal sessions')
+      }
+      // Claim both panes right away with the defaults, then reconcile with what
+      // is persisted: registration order decides who wins an extension slot, so
+      // waiting for the HTTP round-trip would hand the pane to a plugin that
+      // loaded faster.
+      applyTakeovers(ctx)
+      void readTakeoverSettings(ctx)
       return () => {
         for (const stop of stops) {
           if (typeof stop === 'function') stop()
         }
+        disposeTakeover('files')
+        disposeTakeover('terminal')
       }
     }
 

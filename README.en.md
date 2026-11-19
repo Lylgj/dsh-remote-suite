@@ -120,6 +120,29 @@ The built-in "workspace files" panel in the right sidebar is taken over by this 
 
 The interface is mounted at both `/remote-suite/sidebar` and `/sidebar/api/*`, with local and remote paths served by the same methods.
 
+## Terminal in the sidebar
+
+The built-in terminal in the right sidebar is taken over the same way: one terminal per session, for cmd, PowerShell, WSL, SSH and Docker.
+
+- Shells run in a detached background process, so switching tabs and coming back keeps the connection.
+- A remote workspace gets the remote shell, started in the workspace directory.
+- Long output is rendered with WebGL; browsers without support fall back to the plain renderer, so nothing breaks.
+- Up to 10 sessions per environment; the least recently used one is recycled beyond that.
+- The panel copy follows the interface language, in Chinese and English alike.
+
+## Pane takeover
+
+Settings → **Pane takeover** has two switches, both on by default:
+
+- **Take over the file pane**: the sidebar file panel comes from this plugin.
+- **Take over the terminal pane**: the sidebar terminal comes from this plugin.
+
+Turning one off hands that pane back to the DSH built-in. If another plugin already holds the same pane, the takeover switches itself off and names the current holder; open it again after removing that plugin.
+
+With `dsh-better-sidebar` installed the file pane is drawn by it, without the "already registered" error, and this plugin keeps supplying the file data; the terminal pane stays ours. Remove it and restart to take the file pane back.
+
+Since the terminal now ships here, uninstall `@lylgj/dsh-terminal`: it competes for the same "Terminal" pane, the first registration wins and the loser logs an error. Uninstall it and restart.
+
 ## Remote workbench
 
 Open it from **Remote** in the left rail; the light/dark theme follows the interface:

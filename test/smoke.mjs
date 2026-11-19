@@ -45,17 +45,17 @@ const ctx = {
 const dispose = apply(ctx, {})
 assert.equal(name, 'remote-suite')
 assert.equal(registered.length, 1, 'apply must register exactly one tool')
-assert.equal(routes.length, 16, 'apply must register the JSON API, the assets, our file routes and the better-sidebar aliases')
+assert.equal(routes.length, 17, 'apply must register the JSON API, the assets, our file routes, the terminal info route and the better-sidebar aliases')
 const apiRoute = routes.find((route) => route.path === '/remote-suite/api')
 assert.ok(apiRoute !== undefined, 'the JSON API route must be mounted')
 assert.equal(typeof apiRoute.handler, 'function')
 const sidebarRoute = routes.find((route) => route.path === '/remote-suite/sidebar')
 assert.ok(sidebarRoute !== undefined, 'the sidebar file routes must be mounted')
 assert.equal(typeof sidebarRoute.handler, 'function')
-assert.equal(upgrades.length, 2, 'apply must register the PTY and the file-watch upgrade routes')
+assert.equal(upgrades.length, 3, 'apply must register the PTY, the file-watch and the terminal upgrade routes')
 assert.deepEqual(
   upgrades.map((upgrade) => upgrade.path).sort(),
-  ['/remote-suite/pty', '/remote-suite/sidebar/ws/fs-watch'],
+  ['/remote-suite/pty', '/remote-suite/sidebar/ws/fs-watch', '/remote-suite/terminal/ws'],
 )
 
 const tool = registered[0]
@@ -289,5 +289,66 @@ for (const id of wslTargetIds) {
 }
 
 if (typeof dispose === 'function') dispose()
+
+// --- a taken compat route must not cost the rest ----------------------------
+//
+// `@zhangfengshun/dsh-remote-ssh` claims the same exact `/sidebar/api/*` paths.
+// The host refuses a duplicate `(kind, path)` pair, so a second mount has to
+// survive those refusals: every other route, both sockets and the terminal half
+// still have to come up.
+{
+  const taken = new Set(['/sidebar/api/fs.tree', '/sidebar/write'])
+  const routes2 = []
+  const upgrades2 = []
+  const warnings2 = []
+  const originalWarn = console.warn
+  console.warn = (...args) => warnings2.push(args.join(' '))
+  let dispose2
+  try {
+    const ctx2 = {
+      tools: { register: () => () => {} },
+      inject(deps, callback) {
+        if (!deps.includes('webServer')) return undefined
+        callback({
+          webServer: {
+            register(route) {
+              if (taken.has(route.path)) {
+                throw new Error(`webserver: duplicate ${route.kind} route "${route.path}"`)
+              }
+              routes2.push(route)
+              return () => {}
+            },
+            registerUpgrade(upgrade) {
+              upgrades2.push(upgrade)
+              return () => {}
+            },
+          },
+        })
+        return () => {}
+      },
+    }
+    dispose2 = apply(ctx2, {})
+  } finally {
+    console.warn = originalWarn
+  }
+  assert.ok(
+    warnings2.some((line) => line.includes('/sidebar/api/fs.tree')),
+    'a refused compatibility route must be reported, not swallowed silently',
+  )
+  assert.equal(
+    routes2.filter((route) => route.kind === 'exact' && route.path.startsWith('/sidebar/')).length,
+    11,
+    'the eleven compatibility routes the host still accepts must be mounted',
+  )
+  assert.ok(routes2.some((route) => route.path === '/remote-suite/api'), 'the JSON API must still mount')
+  assert.ok(routes2.some((route) => route.path === '/remote-suite/sidebar'), 'our own file routes must still mount')
+  assert.deepEqual(
+    upgrades2.map((upgrade) => upgrade.path).sort(),
+    ['/remote-suite/pty', '/remote-suite/sidebar/ws/fs-watch', '/remote-suite/terminal/ws'],
+    'both sockets and the terminal upgrade must survive a duplicate route',
+  )
+  if (typeof dispose2 === 'function') dispose2()
+  console.log('ok  duplicate compat routes do not break the rest of the mount')
+}
 
 console.log('smoke ok')

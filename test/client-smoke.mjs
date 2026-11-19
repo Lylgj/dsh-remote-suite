@@ -70,12 +70,24 @@ assert.equal(module.inject.join(','), 'slots,workspaces')
 
 const seats = new Map()
 const tabTypes = []
+const tabKinds = new Map()
+const sidebarRightTabs = {
+  register(definition) {
+    tabTypes.push(definition)
+    tabKinds.set(definition.kind, definition)
+    return () => tabKinds.delete(definition.kind)
+  },
+  get(kind) {
+    return tabKinds.get(kind)
+  },
+}
 // The files pane follows the DSH interface language; tests start in Chinese and
 // switch to English at the end to prove both copies render.
 const localeState = { active: 'zh-CN' }
 const ctx = {
   get(name) {
     if (name === 'workspaces') return { create: async () => ({ workspaceId: 'w1' }) }
+    if (name === 'sidebarRightTabs') return sidebarRightTabs
     if (name === 'locale') {
       return { getSnapshot: () => ({ active: localeState.active }), subscribe: () => () => {} }
     }
@@ -85,12 +97,7 @@ const ctx = {
     if (!deps.includes('sidebarRightTabs')) return undefined
     callback({
       slots: ctx.slots,
-      sidebarRightTabs: {
-        register(definition) {
-          tabTypes.push(definition)
-          return () => {}
-        },
-      },
+      sidebarRightTabs,
       effect(run) {
         return run()
       },
@@ -108,11 +115,10 @@ const ctx = {
   },
 }
 module.apply(ctx)
-
-// The `files` kind is claimed one tick late on purpose (see FILES_CLAIM_DELAY_MS):
-// whichever of this plugin and better-sidebar would otherwise win by load order,
-// the decision is made after the install pass settles.
-await new Promise((resolve) => setTimeout(resolve, 400))
+// The panes are claimed synchronously: whoever registers an `extension` claim
+// first wins the kind, so the HTTP read of the persisted switches only confirms
+// or withdraws what was already claimed.
+await new Promise((resolve) => setTimeout(resolve, 200))
 
 // The workbench is the point of the plugin: a Docker/SSH workspace opens onto an
 // empty mirror directory, so the only way to browse and edit the container's real
@@ -137,23 +143,25 @@ assert.equal(
   'the launcher must stay invisible; it only opens the floating workbench',
 )
 
-// The right sidebar's "工作区文件" pane belongs to us now: the official pane only
-// knows host paths, and a remote workspace lives behind SSH/Docker. We claim the
-// `files` kind at extension level so our pane wins, and register its body under
-// the same key the tab definition uses.
-assert.equal(tabTypes.length, 1, 'the plugin must claim exactly one right-sidebar tab kind')
-assert.equal(tabTypes[0].id, 'remote-suite/files')
-assert.equal(tabTypes[0].kind, 'files', 'the tab must replace the host pane, not add a second kind')
-assert.equal(tabTypes[0].priority, 'extension', 'an extension-level claim beats the builtin pane')
-assert.equal(tabTypes[0].keepMounted, true)
-assert.equal(tabTypes[0].title(), '文件')
-assert.equal(tabTypes[0].guide[0].description(), '浏览工作区文件树，点开即预览或编辑')
-assert.equal(typeof tabTypes[0].guide[0].icon, 'function')
-const guideIcon = tabTypes[0].guide[0].icon({ size: 16 })
+// Two of the Host's panes are replaced, both at `extension` level so they win
+// over the builtin ones, and both are switchable from the settings page. The
+// file pane body is registered under the tab definition's key.
+assert.equal(tabTypes.length, 2, 'the plugin must claim the files and the terminal kinds')
+const filesTab = tabTypes.find((tab) => tab.kind === 'files')
+const terminalTab = tabTypes.find((tab) => tab.kind === 'terminal')
+assert.ok(filesTab !== undefined && terminalTab !== undefined, 'both kinds must be claimed')
+assert.equal(filesTab.id, 'remote-suite/files')
+assert.equal(filesTab.kind, 'files', 'the tab must replace the host pane, not add a second kind')
+assert.equal(filesTab.priority, 'extension', 'an extension-level claim beats the builtin pane')
+assert.equal(filesTab.keepMounted, true)
+assert.equal(filesTab.title(), '文件')
+assert.equal(filesTab.guide[0].description(), '浏览工作区文件树，点开即预览或编辑')
+assert.equal(typeof filesTab.guide[0].icon, 'function')
+const guideIcon = filesTab.guide[0].icon({ size: 16 })
 assert.ok(guideIcon !== null && (typeof guideIcon.type === 'string' || typeof guideIcon.type === 'function'))
-assert.equal(tabTypes[0].guide.length, 1)
-assert.equal(tabTypes[0].guide[0].id, 'files')
-assert.equal(tabTypes[0].guide[0].commandId, undefined)
+assert.equal(filesTab.guide.length, 1)
+assert.equal(filesTab.guide[0].id, 'files')
+assert.equal(filesTab.guide[0].commandId, undefined)
 assert.ok(
   seats.has('sidebar.right.pane.tab:remote-suite/files'),
   'the files pane body must be registered under the tab key',
@@ -164,6 +172,31 @@ const filesPane = renderToString(
 )
 assert.ok(filesPane.includes('rs-sf'), 'the files pane must render its own shell')
 assert.ok(filesPane.includes('刷新'), 'the files pane must offer the directory actions')
+
+// The terminal pane replaces the Host's terminal the same way: one instance per
+// session, kept mounted, claimed at extension level, with the start card's
+// shortcut so the empty pane still offers Ctrl+`.
+assert.equal(terminalTab.id, 'remote-suite/terminal')
+assert.equal(terminalTab.priority, 'extension', 'the terminal claim must beat the builtin pane')
+assert.equal(terminalTab.multiple, false, 'one terminal per session: the PTY is reused by cwd')
+assert.equal(terminalTab.keepMounted, true)
+assert.equal(terminalTab.title(), '终端')
+assert.equal(terminalTab.guide[0].commandId, 'terminal.new', 'the start card keeps the Ctrl+` hint')
+assert.ok(
+  seats.has('sidebar.right.pane.tab:remote-suite/terminal'),
+  'the terminal pane body must be registered under the tab key',
+)
+assert.equal(typeof seats.get('sidebar.right.pane.tab:remote-suite/terminal'), 'function')
+
+// The switches themselves live in a settings section, so both panes can be
+// handed back without uninstalling the plugin.
+const settingsSection = seats.get('settings.section:remote-suite')
+assert.equal(typeof settingsSection, 'function', 'the takeover switches must mount in settings')
+const settingsHtml = renderToString(React.createElement(settingsSection, {}))
+assert.ok(settingsHtml.includes('rs-set'), 'the section renders its own rows')
+assert.ok(settingsHtml.includes('接管工作区文件') && settingsHtml.includes('接管终端'))
+assert.ok(settingsHtml.includes('role="switch"'), 'each row is a real switch')
+assert.ok(settingsHtml.includes('当前：本插件接管'), 'the section says who handles each pane')
 
 const rail = seats.get('sidebar.panellist:remote-suite')
 assert.equal(typeof rail, 'function')
@@ -234,11 +267,10 @@ console.log('ok  live refresh keeps the directory in view')
 // original text instead of a bare key.
 localeState.active = 'en-US'
 module.apply(ctx)
-await new Promise((resolve) => setTimeout(resolve, 400))
-const englishTab = tabTypes[tabTypes.length - 1]
-assert.equal(englishTab.title(), 'Files', 'the tab title follows the interface language')
+await new Promise((resolve) => setTimeout(resolve, 200))
+assert.equal(filesTab.title(), 'Files', 'the tab title follows the interface language')
 assert.equal(
-  englishTab.guide[0].description(),
+  filesTab.guide[0].description(),
   'Browse the workspace files; open one to preview or edit it.',
   'the guide line follows the interface language',
 )
@@ -248,4 +280,53 @@ const englishPane = renderToString(
 assert.ok(englishPane.includes('Refresh'), 'the English copy reaches the rendered pane')
 assert.ok(!englishPane.includes('刷新'), 'no Chinese action labels leak into the English pane')
 console.log('ok  files pane follows the interface language')
+
+// The terminal pane was merged in from dsh-terminal, whose copy was Chinese-only.
+// Its labels now go through the same table, so switching the interface language
+// must reach the tab title, the guide line and the toolbar of the panel.
+const terminalTabEn = tabTypes.find((tab) => tab.kind === 'terminal')
+assert.equal(terminalTabEn.title(), 'Terminal', 'the terminal tab title follows the interface language')
+assert.equal(terminalTabEn.guide[0].title(), 'New terminal')
+assert.equal(terminalTabEn.guide[0].description(), 'Run commands in the session workspace')
+console.log('ok  terminal tab follows the interface language')
+
+// Guard against a future edit that drops a label back to a bare literal inside
+// the merged terminal block: every one of these visible strings must be wrapped.
+const translatedLiterals = [
+  '终端',
+  '新建终端',
+  '连接中…',
+  '已连接',
+  '连接失败',
+  '复制',
+  '清屏',
+  '重连',
+  '关闭',
+  '收起',
+  '并排',
+  '浮层',
+  '暗色',
+  '浅色',
+  '复制/粘贴设置',
+  '提示位置',
+]
+for (const literal of translatedLiterals) {
+  // Only the merged terminal block must be bilingual: the workbench is
+  // Chinese-only for now. The copy table is keyed by the Chinese literal, so it
+  // is dropped before looking for a bare string that would never be translated.
+  const blockFrom = source.indexOf('const remoteTerminal = (function')
+  const blockTo = source.indexOf('// Takeover switches', blockFrom)
+  const block = source.slice(blockFrom, blockTo)
+  const tableFrom = block.indexOf('const EN_COPY = {')
+  const tableTo = tableFrom < 0 ? -1 : block.indexOf('function tr(', tableFrom)
+  const scoped = tableFrom < 0 ? block : block.slice(0, tableFrom) + block.slice(tableTo)
+  const bare = new RegExp(`(?<!tr\\()["'\`]${literal}["'\`]`)
+  assert.ok(!bare.test(scoped), `terminal copy "${literal}" must go through tr()`)
+}
+// The two option tables keep the Chinese source text (they are built once, at
+// load time) and are translated where they are rendered.
+for (const call of ['tr(opt.label)', 'tr(opt.title)', 'tr(pos.label)', 'tr(pos.title)']) {
+  assert.ok(source.includes(call), `the terminal menus must translate at render time: ${call}`)
+}
+console.log('ok  terminal copy is translated')
 console.log('client smoke ok')

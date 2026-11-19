@@ -39,6 +39,25 @@ try {
   assert.equal((await api.targets()).length, 1)
   console.log('ok  targets')
 
+  // The two takeover switches live in the same state file as the workspaces,
+  // default to "take over everything", and only accept real booleans.
+  assert.deepEqual(await api.settings(), { takeOverFiles: true, takeOverTerminal: true })
+  assert.deepEqual(await api['settings-set']({ takeOverTerminal: false }), {
+    takeOverFiles: true,
+    takeOverTerminal: false,
+  })
+  assert.deepEqual(await api['settings-set']({ takeOverFiles: 'yes', nonsense: 1 }), {
+    takeOverFiles: true,
+    takeOverTerminal: false,
+  })
+  const reloaded = createApi({ registry })
+  assert.deepEqual(await reloaded.settings(), { takeOverFiles: true, takeOverTerminal: false })
+  assert.deepEqual(await api['settings-set']({ takeOverFiles: true, takeOverTerminal: true }), {
+    takeOverFiles: true,
+    takeOverTerminal: true,
+  })
+  console.log('ok  settings + settings-set')
+
   // The file picker starts from `home` and walks out through `roots`; on
   // Windows that is the list of drive letters, so a project on D: is reachable
   // even when the host hands us a profile directory as "home".

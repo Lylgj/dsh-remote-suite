@@ -1,7 +1,7 @@
 {
   "name": "@lylgj/dsh-remote-suite",
-  "version": "0.1.3",
-  "description": "本机、WSL、SSH、Docker 和远程守护进程，接到一个工作区列表里：右侧栏能浏览和编辑远端文件，一个 remote 工具走遍所有目标。",
+  "version": "0.1.4",
+  "description": "本机、WSL、SSH、Docker 和远程守护进程，接到一个工作区列表里：右侧栏的文件与终端都由本插件接管，一个 remote 工具走遍所有目标。",
   "type": "module",
   "main": "index.js",
   "author": "Lylgj",
@@ -79,6 +79,7 @@
     "test:tunnel": "node test/tunnel-smoke.mjs"
   },
   "dependencies": {
+    "node-pty": "^1.1.0",
     "ssh2": "^1.17.0",
     "ws": "^8.22.2"
   },
