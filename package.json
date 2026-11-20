@@ -59,7 +59,10 @@
       "dshReleases": {
         "0.2.2-alpha.3": "incompatible",
         "0.2.2-rc.1": "compatible",
-        "0.2.2-rc.2": "unknown"
+        "0.2.2-rc.2": "unknown",
+        "0.2.2-rc.3": "unknown",
+        "0.2.2-rc.4": "unknown",
+        "0.2.2-rc.5": "unknown"
       }
     },
     "client": {

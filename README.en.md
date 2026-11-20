@@ -139,10 +139,6 @@ Settings â†’ **Pane takeover** has two switches, both on by default:
 
 Turning one off hands that pane back to the DSH built-in. If another plugin already holds the same pane, the takeover switches itself off and names the current holder; open it again after removing that plugin.
 
-With `dsh-better-sidebar` installed the file pane is drawn by it, without the "already registered" error, and this plugin keeps supplying the file data; the terminal pane stays ours. Remove it and restart to take the file pane back.
-
-Since the terminal now ships here, uninstall `@lylgj/dsh-terminal`: it competes for the same "Terminal" pane, the first registration wins and the loser logs an error. Uninstall it and restart.
-
 ## Remote workbench
 
 Open it from **Remote** in the left rail; the light/dark theme follows the interface:
@@ -229,7 +225,8 @@ The plugin stores SSH host records and (optionally) passwords on this machine â€
 
 ## Versions and compatibility
 
-- DSH `0.2.2-rc.1` and newer; `0.2.2-alpha.3` is incompatible and `0.2.2-rc.2` is unverified.
+- Minimum DSH requirement: `>=0.2.2-rc.1`. Current development and troubleshooting use the Windows desktop app `0.2.2-rc.5`; full functional compatibility is still being verified.
+- `0.2.2-alpha.3` is incompatible. Full compatibility is not guaranteed for other releases that have not been individually tested.
 - Node.js `20` and newer.
 - Status: best tested on the Windows desktop app; Linux desktop and macOS are untested.
 
