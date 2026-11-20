@@ -1293,6 +1293,9 @@ window.__ModuleLoader__.load({
   background: color-mix(in srgb, #2fb344 13%, transparent); }
 .rs-set-state.is-on::before { opacity: 1;
   box-shadow: 0 0 0 3px color-mix(in srgb, #2fb344 18%, transparent); }
+.rs-set-state.is-error { color: #e11d48; opacity: 1; max-width: 100%; overflow-wrap: anywhere;
+  background: color-mix(in srgb, #e11d48 10%, transparent); }
+.rs-set-state.is-error::before { opacity: 1; }
 .rs-set-switch { flex: 0 0 auto; width: 44px; height: 24px; padding: 0; border: 0; border-radius: 999px;
   background: color-mix(in srgb, currentColor 20%, transparent); position: relative; cursor: pointer;
   transition: background 0.18s ease; }
@@ -4605,6 +4608,7 @@ window.__ModuleLoader__.load({
       "当前：本插件接管": "Now: handled by this plugin",
       "当前：DSH 自带": "Now: DSH's own pane",
       "当前：{name} 接管": "Now: handled by {name}",
+      "接管失败：{detail}": "Could not take over: {detail}",
       "改动立即生效，不需要重启。": "Changes apply immediately; no restart needed.",
     }
 
@@ -7127,6 +7131,9 @@ window.__ModuleLoader__.load({
 
     let takeoverSettings = { takeOverFiles: true, takeOverTerminal: true }
     const takeoverHolders = { files: null, terminal: null }
+    // Registration failures are kept per pane so the settings row can say what
+    // went wrong instead of silently flipping the switch back.
+    const takeoverErrors = { files: null, terminal: null }
     const takeoverListeners = new Set()
     const takeoverMounts = { files: null, terminal: null }
     let takeoverCtx = null
@@ -7189,27 +7196,56 @@ window.__ModuleLoader__.load({
       return remoteTerminal.TerminalGlyph
     }
 
-    function mountFilesPane(ctx, tabs) {
+    /**
+     * Register a pane in two steps (tab type, then body) and roll the first one
+     * back when the second throws. Without this a half-registered pane stays in
+     * the host registry forever: the next attempt then fails with "already
+     * registered", and the switch looks broken.
+     */
+    function mountPane(parts) {
       const disposers = []
-      disposers.push(
-        tabs.register({
-          id: FILES_TAB_ID,
-          kind: 'files',
-          keepMounted: true,
-          priority: 'extension',
-          title: () => tr('文件'),
-          guide: [
-            {
-              id: 'files',
-              order: 10,
-              title: () => tr('文件'),
-              description: () => tr('浏览工作区文件树，点开即预览或编辑'),
-              icon: filesGuideIcon,
-            },
-          ],
-        }),
-      )
-      disposers.push(
+      try {
+        for (const part of parts) disposers.push(part())
+      } catch (error) {
+        for (const dispose of disposers.splice(0).reverse()) {
+          try {
+            if (typeof dispose === 'function') dispose()
+          } catch (release) {
+            console.warn('[dsh-remote-suite] 回收未完成的页签注册失败', release)
+          }
+        }
+        throw error
+      }
+      return disposers
+    }
+
+    function mountFilesPane(ctx, tabs) {
+      // Same recovery rule as the terminal pane: a definition already sitting
+      // under our id means only the body is missing, so do not register it twice.
+      const held = heldPane(ctx, 'files')
+      const owned = held !== null && held.id === FILES_TAB_ID
+      const parts = []
+      if (!owned) {
+        parts.push(() =>
+          tabs.register({
+            id: FILES_TAB_ID,
+            kind: 'files',
+            keepMounted: true,
+            priority: 'extension',
+            title: () => tr('文件'),
+            guide: [
+              {
+                id: 'files',
+                order: 10,
+                title: () => tr('文件'),
+                description: () => tr('浏览工作区文件树，点开即预览或编辑'),
+                icon: filesGuideIcon,
+              },
+            ],
+          }),
+        )
+      }
+      parts.push(() =>
         ctx.slots.inject('sidebar.right.pane.tab', () =>
           ctx.slots.register(
             { name: 'sidebar.right.pane.tab', key: FILES_TAB_ID, inject: (sessionId) => ({ sessionId }) },
@@ -7217,44 +7253,39 @@ window.__ModuleLoader__.load({
           ),
         ),
       )
-      return disposers
+      return mountPane(parts)
     }
 
     function mountTerminalPane(ctx, tabs) {
-      // Reuse the built-in definition's title, guide and artwork when it is
-      // readable, so the tab and its start card stay identical to the pane
-      // being replaced and follow the host locale automatically.
       const held = heldPane(ctx, 'terminal')
-      const builtin = held === null ? null : held.definition
-      const usable = builtin !== null && typeof builtin.title === 'function' && Array.isArray(builtin.guide)
-      const guide = usable
-        ? builtin.guide.map((entry) => ({
-            ...entry,
-            commandId: typeof entry.commandId === 'string' ? entry.commandId : 'terminal.new',
-          }))
-        : [
-            {
-              id: 'new',
-              order: 20,
-              commandId: 'terminal.new',
-              title: () => tr('新建终端'),
-              description: () => tr('在会话工作区运行命令'),
-              icon: terminalCardIcon(),
-            },
-          ]
-      const disposers = []
-      disposers.push(
-        tabs.register({
-          id: TERMINAL_TAB_ID,
-          kind: 'terminal',
-          multiple: false,
-          keepMounted: true,
-          priority: 'extension',
-          title: usable ? builtin.title : () => tr('终端'),
-          guide,
-        }),
-      )
-      disposers.push(
+      // A tab type under our id with no mount record means an earlier attempt
+      // half-succeeded (the host keeps the type but we lost its disposer). The
+      // body is then the only missing half, so claim it instead of failing.
+      const owned = held !== null && held.id === TERMINAL_TAB_ID
+      const parts = []
+      if (!owned) {
+        parts.push(() =>
+          tabs.register({
+            id: TERMINAL_TAB_ID,
+            kind: 'terminal',
+            multiple: false,
+            keepMounted: true,
+            priority: 'extension',
+            title: () => tr('终端'),
+            guide: [
+              {
+                id: 'new',
+                order: 20,
+                commandId: 'terminal.new',
+                title: () => tr('新建终端'),
+                description: () => tr('在会话工作区运行命令'),
+                icon: terminalCardIcon(),
+              },
+            ],
+          }),
+        )
+      }
+      parts.push(() =>
         ctx.slots.inject('sidebar.right.pane.tab', () =>
           ctx.slots.register(
             {
@@ -7270,7 +7301,7 @@ window.__ModuleLoader__.load({
           ),
         ),
       )
-      return disposers
+      return mountPane(parts)
     }
 
     function disposeTakeover(kind) {
@@ -7321,11 +7352,20 @@ window.__ModuleLoader__.load({
         const enabled = kind === 'files' ? takeoverSettings.takeOverFiles : takeoverSettings.takeOverTerminal
         if (!enabled) {
           disposeTakeover(kind)
+          takeoverErrors[kind] = null
           // Whoever holds the slot now (usually DSH's builtin) is the label.
           const after = heldPane(ctx, kind)
-          takeoverHolders[kind] = after === null || after.id === TAKEOVER_IDS[kind] || after.band !== 'extension'
-            ? null
-            : after.id
+          if (after !== null && after.id === TAKEOVER_IDS[kind]) {
+            // The registry has no public unregister: without the disposer this
+            // process cannot hand the kind back. Say so instead of claiming a
+            // graceful release that will not happen until the next restart.
+            console.warn(
+              '[dsh-remote-suite] 右侧栏 ' + kind + ' 的注册句柄已丢失，本次无法释放，重启 DSH 后恢复',
+            )
+            takeoverHolders[kind] = null
+          } else {
+            takeoverHolders[kind] = after === null || after.band !== 'extension' ? null : after.id
+          }
           continue
         }
         // dsh-better-sidebar only claims the `files` kind (its terminal lives in
@@ -7335,6 +7375,7 @@ window.__ModuleLoader__.load({
           // Let it draw the pane; the switch still means "this plugin supplies
           // the files", which is what /sidebar/api does for its file pane.
           disposeTakeover(kind)
+          takeoverErrors[kind] = null
           if (takeoverHolders[kind] !== BETTER_SIDEBAR_ID) {
             takeoverHolders[kind] = BETTER_SIDEBAR_ID
             console.info('[dsh-remote-suite] dsh-better-sidebar 已安装，文件页签由它显示，数据仍由本插件提供')
@@ -7345,6 +7386,7 @@ window.__ModuleLoader__.load({
         const held = heldPane(ctx, kind)
         if (held !== null && held.band === 'extension' && held.id !== TAKEOVER_IDS[kind]) {
           takeoverHolders[kind] = held.id
+          takeoverErrors[kind] = null
           emitTakeover(kind === 'files' ? { takeOverFiles: false } : { takeOverTerminal: false })
           // The terminal plugin this feature came from is merged into this one:
           // say so instead of leaving a bare "someone else holds it".
@@ -7359,11 +7401,15 @@ window.__ModuleLoader__.load({
         try {
           takeoverMounts[kind] = kind === 'files' ? mountFilesPane(ctx, tabs) : mountTerminalPane(ctx, tabs)
           takeoverHolders[kind] = TAKEOVER_IDS[kind]
+          takeoverErrors[kind] = null
         } catch (error) {
+          // Keep the switch on and say why: flipping it off would hide the
+          // problem, and the user can retry once the cause is gone (a restart
+          // always starts from a clean registry).
           console.error('dsh-remote-suite: the ' + kind + ' takeover could not be registered', error)
-          takeoverHolders[kind] = held === null ? null : held.id
-          emitTakeover(kind === 'files' ? { takeOverFiles: false } : { takeOverTerminal: false })
-          void persistTakeover(kind === 'files' ? { takeOverFiles: false } : { takeOverTerminal: false })
+          takeoverMounts[kind] = null
+          takeoverErrors[kind] = String((error !== null && error !== undefined && error.message) || error || 'unknown error')
+          takeoverHolders[kind] = held !== null && held.id !== TAKEOVER_IDS[kind] ? held.id : null
         }
       }
       emitTakeover({})
@@ -7392,6 +7438,9 @@ window.__ModuleLoader__.load({
     }
 
     function holderLabel(kind, enabled) {
+      if (takeoverErrors[kind] !== null) {
+        return tr('接管失败：{detail}', { detail: takeoverErrors[kind] })
+      }
       if (kind === 'files' && takeoverHolders[kind] === BETTER_SIDEBAR_ID) {
         return tr('当前：dsh-better-sidebar 的面板（数据由本插件提供）')
       }
@@ -7469,7 +7518,15 @@ window.__ModuleLoader__.load({
               h('div', { className: 'rs-set-hint' }, row.hint),
               h(
                 'div',
-                { className: 'rs-set-state' + (row.enabled && takeoverHolders[row.kind] !== BETTER_SIDEBAR_ID ? ' is-on' : '') },
+                {
+                  className:
+                    'rs-set-state' +
+                    (takeoverErrors[row.kind] !== null
+                      ? ' is-error'
+                      : row.enabled && takeoverHolders[row.kind] !== BETTER_SIDEBAR_ID
+                        ? ' is-on'
+                        : ''),
+                },
                 holderLabel(row.kind, row.enabled),
               ),
             ),

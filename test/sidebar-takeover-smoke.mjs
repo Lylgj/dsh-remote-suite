@@ -31,7 +31,7 @@ const kit = {
  * Load a fresh copy of client.js. The takeover state lives in module scope, so
  * every scenario needs its own instance.
  */
-function loadClient({ settings } = {}) {
+function loadClient({ settings, requests } = {}) {
   let loaded
   // `call()` builds its URL with `URL`, which a bare vm context does not carry.
   const sandbox = { console, setTimeout, clearTimeout, URL }
@@ -44,8 +44,9 @@ function loadClient({ settings } = {}) {
     },
   }
   if (settings !== undefined) {
-    sandbox.fetch = async (url) => {
+    sandbox.fetch = async (url, init) => {
       const method = String(url).split('/').pop()
+      if (requests !== undefined) requests.push({ method, body: String(init?.body ?? '') })
       const result = method === 'settings' ? settings : settings
       return { status: 200, async text() { return JSON.stringify({ ok: true, result }) } }
     }
@@ -62,12 +63,15 @@ function loadClient({ settings } = {}) {
 }
 
 /** A stub sidebarRightTabs registry that enforces the one-extension-per-kind rule. */
-function makeRegistry() {
+function makeRegistry({ failKind } = {}) {
   const kinds = new Map()
   const registered = []
   return {
     registered,
     register(definition) {
+      if (failKind === definition.kind) {
+        throw new Error(`sidebarRight: tab type id "${definition.id}" is already registered`)
+      }
       const held = kinds.get(definition.kind)
       if (held !== undefined && held.priority === 'extension' && definition.priority === 'extension') {
         throw new Error(`sidebarRight: tab kind "${definition.kind}" is already registered (extension)`)
@@ -90,15 +94,28 @@ async function mount({
   takenFilesPriority = 'extension',
   takenTerminal,
   betterSidebar = false,
+  failKind,
+  preRegisterTerminal = false,
+  requests,
   settings = { takeOverFiles: true, takeOverTerminal: true },
 } = {}) {
-  const module = loadClient({ settings })
-  const tabs = makeRegistry()
+  const module = loadClient({ settings, requests })
+  const tabs = makeRegistry({ failKind })
   const seats = new Map()
   const warnings = []
   const errors = []
   if (takenFiles !== undefined) tabs.register({ id: takenFiles, kind: 'files', priority: takenFilesPriority })
   if (takenTerminal !== undefined) tabs.register({ id: takenTerminal, kind: 'terminal', priority: 'extension' })
+  if (preRegisterTerminal) {
+    tabs.register({
+      id: 'remote-suite/terminal',
+      kind: 'terminal',
+      priority: 'extension',
+      keepMounted: true,
+      title: () => '终端',
+      guide: [{ id: 'new', order: 20, commandId: 'terminal.new', title: () => '新建终端' }],
+    })
+  }
 
   const ctx = {
     get(name) {
@@ -238,6 +255,35 @@ async function mount({
   assert.ok(/dsh-better-sidebar/.test(html), 'the settings section names the plugin that draws the file pane')
   assert.ok(/数据由本插件提供|data served by this plugin/.test(html), 'and says where the file data comes from')
   assert.ok(/当前：本插件接管|handled by this plugin/.test(html), 'the terminal row still reports this plugin')
+}
+
+// 7. A refused registration must not fake a state: the switch stays on, the row
+//    says what failed, and the failure is never persisted as "switched off" (that
+//    would race the click's own save and hide the problem).
+{
+  const requests = []
+  const { tabs, seats, errors } = await mount({ failKind: 'terminal', requests })
+  assert.ok(errors.some((line) => /terminal.*could not be registered/.test(line)), 'the failure is logged')
+  assert.equal(tabs.get('terminal'), undefined, 'nothing is left half registered')
+  const Section = seats.get('settings.section:remote-suite')
+  const html = renderToStaticMarkup(React.createElement(Section))
+  assert.ok(/接管失败|Could not take over/.test(html), 'the row reports the failure')
+  assert.ok(/already registered/.test(html), 'and carries the reason')
+  assert.ok(!/takeOverTerminal":false/.test(requests.map((r) => r.body).join('\n')), 'a failure is not saved as switched off')
+}
+
+// 8. A tab type left behind under our id (an earlier attempt half-succeeded and
+//    lost its disposer) is not a reason to stay broken: the body is the missing
+//    half, so this run claims the body and reports success.
+{
+  const { tabs, seats, errors } = await mount({ preRegisterTerminal: true })
+  assert.equal(errors.length, 0, 'recovering a half-registered pane is not an error')
+  assert.equal(tabs.get('terminal').id, 'remote-suite/terminal', 'the pane is still ours')
+  assert.ok(seats.has('sidebar.right.pane.tab:remote-suite/terminal'), 'the missing body is registered')
+  const Section = seats.get('settings.section:remote-suite')
+  const html = renderToStaticMarkup(React.createElement(Section))
+  assert.ok(!/接管失败|Could not take over/.test(html), 'the recovered pane reports no failure')
+  assert.ok(/当前：本插件接管|handled by this plugin/.test(html), 'the recovered pane reports this plugin')
 }
 
 console.log('sidebar takeover smoke ok')
