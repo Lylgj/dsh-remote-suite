@@ -15,7 +15,7 @@
 // call time instead, so a Host that lacks one still mounts this plugin.
 
 import { createRequire } from 'node:module'
-import { appendFile, mkdir } from 'node:fs/promises'
+import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -122,11 +122,6 @@ function sameOrigin(req) {
 }
 
 /**
- * Diagnostics: record what the desktop shell actually sends. A page served from
- * a custom scheme can fail to reach these routes, and without DevTools the only
- * evidence is what arrives (or does not) at the Host.
- */
-/**
  * Append one diagnostic line per request: method, target, and the two headers the
  * trust fence reads. `host` and `origin` are what decide a refusal, so a 401/403
  * report from a user can be answered by reading this file.
@@ -146,15 +141,31 @@ function note(line) {
   appendDebug(`${new Date().toISOString()} note ${line}\n`)
 }
 
+/** Keep `debug.log` from growing without bound: past this size it is rotated. */
+const DEBUG_LOG_LIMIT = 1024 * 1024
+
 /**
  * Best-effort append to `$DSH_HOME/remote-suite/debug.log`; never rejects.
+ *
+ * One request per line adds up over a long session, so the file is rotated to
+ * `debug.log.1` (replacing any earlier one) once it passes {@link DEBUG_LOG_LIMIT}.
+ * That caps this plugin's diagnostics at roughly 2 MiB together, and rotating a
+ * single previous file keeps the last interesting window without a log library.
  * @param line - one line of text.
  */
 function appendDebug(line) {
   const home = process.env.DSH_HOME || join(homedir(), '.dsh')
   const file = join(home, 'remote-suite', 'debug.log')
   mkdir(dirname(file), { recursive: true })
-    .then(() => appendFile(file, line))
+    .then(async () => {
+      try {
+        const size = (await stat(file)).size
+        if (size > DEBUG_LOG_LIMIT) await rename(file, `${file}.1`)
+      } catch {
+        // Missing file on the first write, or a rename race with another append.
+      }
+      await appendFile(file, line)
+    })
     .catch(() => {})
 }
 

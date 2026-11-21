@@ -223,7 +223,7 @@ Changes take effect after reopening the workspace or restarting DSH.
 
 The plugin stores SSH host records and (optionally) passwords on this machine — protect access to the DSH data directory. Remote commands run as your user on the target; destructive actions have no second confirmation, so check the target and path first.
 
-Every Web route this plugin registers (`/remote-suite/api`, `/remote-suite/assets`, `/remote-suite/sidebar`, the `/sidebar/*` compatibility routes, the terminal probe) and every WebSocket upgrade asks the Host's `ctx.connection.requestRejection` first. That call checks the Host/Origin fence (against DNS rebinding and cross-site callers) and the browser session credential; a refused request gets `401` / `403` and never reaches the handler. On a Host without a `connection` service (a bare CLI host) the plugin falls back to its own same-origin and request-header checks.
+Every Web route this plugin registers (`/remote-suite/api`, `/remote-suite/assets`, `/remote-suite/sidebar`, the `/sidebar/*` compatibility routes, the terminal probe) and every WebSocket upgrade asks the Host's `ctx.connection.requestRejection` first. That call checks the Host/Origin fence (against DNS rebinding and cross-site callers) and the browser session credential; a refused request gets `401` / `403` and never reaches the handler. The detached terminal process (default `127.0.0.1:3111`) lives outside the Host, so it applies its own rule instead: only callers that send `x-remote-suite: 1` from a permitted origin are served. On a Host without a `connection` service (a bare CLI host) the plugin falls back to its own same-origin and request-header checks.
 
 ## Versions and compatibility
 

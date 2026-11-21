@@ -223,7 +223,7 @@ Agent 通过一个工具操作所有目标，共 22 个 action：
 
 插件会在本机保存 SSH 主机配置与（可选的）密码，请保护好 DSH 数据目录。远端命令以你的用户在目标机器上执行，删除、擦除、覆盖类操作没有二次确认，请先核对目标与路径。
 
-插件注册的每个 Web 路由（`/remote-suite/api`、`/remote-suite/assets`、`/remote-suite/sidebar`、`/sidebar/*` 兼容路由、终端信息路由）与 WebSocket 升级入口，都会先调用宿主的 `ctx.connection.requestRejection` 做访问检查：它同时校验 Host/Origin（挡 DNS 重绑定与跨站调用）和浏览器会话凭据，未通过直接回 `401` / `403`，不会进入处理逻辑。宿主没有 `connection` 服务时（纯命令行宿主），退回到插件自己的同源检查与请求头校验。
+插件注册的每个 Web 路由（`/remote-suite/api`、`/remote-suite/assets`、`/remote-suite/sidebar`、`/sidebar/*` 兼容路由、终端信息路由）与 WebSocket 升级入口，都会先调用宿主的 `ctx.connection.requestRejection` 做访问检查：它同时校验 Host/Origin（挡 DNS 重绑定与跨站调用）和浏览器会话凭据，未通过直接回 `401` / `403`，不会进入处理逻辑。终端独立进程（默认 `127.0.0.1:3111`）不在宿主内，用不上这套检查，改为只接受带 `x-remote-suite: 1` 且来源合法的本机调用。宿主没有 `connection` 服务时（纯命令行宿主），退回到插件自己的同源检查与请求头校验。
 
 ## 版本与兼容性
 

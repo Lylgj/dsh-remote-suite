@@ -14,9 +14,10 @@ process.env.DSH_REMOTE_SUITE_STATE = process.env.DSH_REMOTE_SUITE_STATE
 process.env.DSH_HOME = `${process.env.TEMP || process.env.TMPDIR || '/tmp'}/remote-suite-smoke-home-${process.pid}`
 
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { apply, name } from '../index.js'
 
@@ -478,6 +479,41 @@ if (typeof dispose === 'function') dispose()
   check('every upgrade route is gated')
 
   if (typeof dispose3 === 'function') dispose3()
+}
+
+// A long session writes one trace line per request; the log must stay bounded.
+{
+  const home = await mkdtemp(join(tmpdir(), 'remote-suite-log-'))
+  const debugFile = join(home, 'remote-suite', 'debug.log')
+  await mkdir(dirname(debugFile), { recursive: true })
+  await writeFile(debugFile, 'x'.repeat(1024 * 1024 + 64))
+
+  const previous = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  try {
+    const route = routes.find((item) => item.path === '/remote-suite/api')
+    const req = Readable.from([JSON.stringify({})])
+    req.method = 'POST'
+    req.url = route.path
+    req.headers = { 'x-remote-suite': '1' }
+    const res = {
+      statusCode: 200,
+      setHeader() {},
+      writeHead(code) {
+        this.statusCode = code
+      },
+      end() {},
+    }
+    await route.handler(req, res)
+    await new Promise((resolve) => setTimeout(resolve, 150))
+
+    assert.equal(existsSync(`${debugFile}.1`), true, 'a log past the limit must be rotated aside')
+    assert.ok((await stat(debugFile)).size < 4096, 'the rotated log must start over instead of growing')
+    assert.equal((await stat(`${debugFile}.1`)).size > 1024 * 1024, true, 'the previous window must be kept')
+  } finally {
+    process.env.DSH_HOME = previous
+  }
+  check('the debug log rotates instead of growing without bound')
 }
 
 console.log('smoke ok')
