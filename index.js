@@ -19,6 +19,7 @@ import { appendFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createAccessGate } from './lib/access.js'
 import { createApi } from './lib/api.js'
 import { serveAsset } from './lib/assets.js'
 import { createRegistry } from './lib/backends/index.js'
@@ -125,10 +126,33 @@ function sameOrigin(req) {
  * a custom scheme can fail to reach these routes, and without DevTools the only
  * evidence is what arrives (or does not) at the Host.
  */
+/**
+ * Append one diagnostic line per request: method, target, and the two headers the
+ * trust fence reads. `host` and `origin` are what decide a refusal, so a 401/403
+ * report from a user can be answered by reading this file.
+ * @param req - the request the route received.
+ * @param tag - route family, for reading the log.
+ */
 function trace(req, tag) {
+  const line = `${new Date().toISOString()} ${tag} ${req.method} url=${req.url} host=${req.headers.host ?? '-'} origin=${req.headers.origin ?? '-'}\n`
+  appendDebug(line)
+}
+
+/**
+ * Append one diagnostic line that is not tied to a request.
+ * @param line - already formatted text.
+ */
+function note(line) {
+  appendDebug(`${new Date().toISOString()} note ${line}\n`)
+}
+
+/**
+ * Best-effort append to `$DSH_HOME/remote-suite/debug.log`; never rejects.
+ * @param line - one line of text.
+ */
+function appendDebug(line) {
   const home = process.env.DSH_HOME || join(homedir(), '.dsh')
   const file = join(home, 'remote-suite', 'debug.log')
-  const line = `${new Date().toISOString()} ${tag} ${req.method} url=${req.url} host=${req.headers.host} origin=${req.headers.origin || '-'} ua=${String(req.headers['user-agent'] || '-').slice(0, 40)}\n`
   mkdir(dirname(file), { recursive: true })
     .then(() => appendFile(file, line))
     .catch(() => {})
@@ -142,6 +166,21 @@ export function apply(ctx, config = {}) {
   })
   const api = createApi({ registry })
   const disposers = [ctx.tools.register(createRemoteTool({ registry, config }))]
+
+  // Every route below is reachable from the browser, so each handler asks the
+  // composition's Connection service first: it owns the Host/Origin fence and the
+  // browser session credential, and a page from another origin must not reach the
+  // file API or a shell. A Host without that service keeps the plugin's own checks.
+  const access = createAccessGate(ctx, ctx.logger, (status, req) => {
+    note(`access reject ${status} ${req.method} ${req.url} origin=${req.headers.origin || '-'} host=${req.headers.host}`)
+  })
+  // The service is only readable from a Context that asked for it, and this plugin
+  // does not declare `connection` in `inject` (a Host without a browser carrier has
+  // none). Ask for a scope that has it and arm the gate as soon as it arrives.
+  ctx.inject(['connection'], (scoped) => {
+    const armed = access.attach(scoped.connection)
+    note(`access gate ${armed ? 'armed' : 'skipped: no connection service'}`)
+  })
 
   // The `sessions` service is what turns a sessionId into the working directory
   // whose files the sidebar should list. It is optional: a Host without it falls
@@ -177,6 +216,7 @@ export function apply(ctx, config = {}) {
       path: API_BASE,
       handler: async (req, res) => {
         trace(req, 'api')
+        if (access.rejectRequest(req, res)) return
         try {
           if (req.method !== 'POST') {
             sendJson(res, 405, { ok: false, error: 'method not allowed' })
@@ -214,6 +254,7 @@ export function apply(ctx, config = {}) {
       kind: 'prefix',
       path: ASSET_BASE,
       handler: async (req, res) => {
+        if (access.rejectRequest(req, res)) return
         const pathname = new URL(req.url || '/', 'http://remote-suite.invalid').pathname
         const rel = decodeURIComponent(pathname.slice(ASSET_BASE.length)).replace(/^\/+/, '')
         const served = await serveAsset(ASSET_ROOT, rel, res)
@@ -239,6 +280,7 @@ export function apply(ctx, config = {}) {
    * browser cannot forge the header only our own page attaches.
    */
   const serveSidebar = async (req, res, rest, compat) => {
+    if (access.rejectRequest(req, res)) return
     const url = new URL(req.url || '/', 'http://remote-suite.invalid')
     const query = {
       sessionId: url.searchParams.get('sessionId') ?? undefined,
@@ -427,6 +469,7 @@ export function apply(ctx, config = {}) {
           path: PTY_PATH,
           handler: (req, socket, head) => {
             trace(req, 'ws')
+            if (access.rejectUpgrade(req, socket)) return
             if (!sameOrigin(req)) {
               try {
                 socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
@@ -463,6 +506,7 @@ export function apply(ctx, config = {}) {
         off = scoped.webServer.registerUpgrade({
           path: SIDEBAR_WATCH_PATH,
           handler: (req, socket, head) => {
+            if (access.rejectUpgrade(req, socket)) return
             if (!sameOrigin(req)) {
               try {
                 socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
@@ -500,6 +544,7 @@ export function apply(ctx, config = {}) {
       terminalHost.apply({
         webServer: scoped.webServer,
         logger: ctx.logger,
+        gate: access,
         effect: (fn, label) => (typeof ctx.effect === 'function' ? ctx.effect(fn, label) : fn()),
       })
     } catch (error) {

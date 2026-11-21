@@ -7,6 +7,12 @@
 process.env.DSH_REMOTE_SUITE_STATE = process.env.DSH_REMOTE_SUITE_STATE
   || `${process.env.TEMP || process.env.TMPDIR || '/tmp'}/remote-suite-suite-${process.pid}.json`
 
+// The host writes request traces to `$DSH_HOME/remote-suite/debug.log`; point that at
+// a scratch directory so running the tests never edits the real log. This overrides
+// an inherited `DSH_HOME` on purpose: the shell that runs `node test/…` is usually a
+// DSH session, and its home is exactly the one we must not touch.
+process.env.DSH_HOME = `${process.env.TEMP || process.env.TMPDIR || '/tmp'}/remote-suite-smoke-home-${process.pid}`
+
 import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -17,12 +23,17 @@ import { apply, name } from '../index.js'
 const registered = []
 const routes = []
 const upgrades = []
+// The composition's Connection service: this stub admits everything, so the
+// cases below keep testing their own subject instead of the trust fence.
 const ctx = {
   tools: {
     register(def) {
       registered.push(def)
       return () => {}
     },
+  },
+  get(key) {
+    return key === 'connection' ? { requestRejection: () => undefined } : undefined
   },
   inject(deps, callback) {
     if (!deps.includes('webServer')) return undefined
@@ -349,6 +360,124 @@ if (typeof dispose === 'function') dispose()
   )
   if (typeof dispose2 === 'function') dispose2()
   console.log('ok  duplicate compat routes do not break the rest of the mount')
+}
+
+// --- the host access check gates every route --------------------------------
+//
+// A page from another origin must not reach the file API, the assets, the
+// terminal probe or an upgrade: each handler asks the composition's Connection
+// service first and writes its 401/403 before doing any work.
+{
+  const routes3 = []
+  const upgrades3 = []
+  const sockets3 = []
+  const ctx3 = {
+    tools: { register: () => () => {} },
+    get(key) {
+      if (key !== 'connection') return undefined
+      return { requestRejection: (req) => (req.headers['x-dsh-session'] === 'ok' ? undefined : 401) }
+    },
+    inject(deps, callback) {
+      if (!deps.includes('webServer')) return undefined
+      callback({
+        webServer: {
+          register(route) {
+            routes3.push(route)
+            return () => {}
+          },
+          registerUpgrade(upgrade) {
+            upgrades3.push(upgrade)
+            return () => {}
+          },
+        },
+      })
+      return () => {}
+    },
+  }
+  const dispose3 = apply(ctx3, {})
+
+  const callRoute = async (route, { method = 'POST', url = route.path, headers = {}, body } = {}) => {
+    const req = url === route.path && body !== undefined ? Readable.from([JSON.stringify(body)]) : Readable.from([])
+    req.method = method
+    req.url = url
+    req.headers = headers
+    let status
+    let payload
+    const res = {
+      statusCode: 200,
+      setHeader() {},
+      writeHead(code) {
+        status = code
+      },
+      end(text) {
+        status = status ?? this.statusCode
+        payload = text
+      },
+    }
+    await route.handler(req, res)
+    return { status, payload }
+  }
+
+  const apiRoute3 = routes3.find((route) => route.path === '/remote-suite/api')
+  const apiUrl = '/remote-suite/api/targets'
+  const deniedApi = await callRoute(apiRoute3, { url: apiUrl, headers: { 'x-remote-suite': '1' }, body: {} })
+  assert.equal(deniedApi.status, 401, 'the JSON API must refuse a caller the connection service rejects')
+  assert.equal(deniedApi.payload, undefined, 'a refused request must not reach the handler')
+  const openApi = await callRoute(apiRoute3, {
+    url: apiUrl,
+    headers: { 'x-remote-suite': '1', 'x-dsh-session': 'ok' },
+    body: {},
+  })
+  assert.equal(openApi.status, 200, 'an admitted caller must still be served')
+  check('the JSON API asks the connection service first')
+
+  const assetRoute3 = routes3.find((route) => route.path === '/remote-suite/assets')
+  const deniedAsset = await callRoute(assetRoute3, {
+    method: 'GET',
+    url: '/remote-suite/assets/xterm.js',
+    headers: {},
+  })
+  assert.equal(deniedAsset.status, 401, 'the asset route must refuse a rejected caller too')
+  check('the asset route is gated')
+
+  const compatRoute3 = routes3.find((route) => route.path === '/sidebar/api/fs.tree')
+  const deniedCompat = await callRoute(compatRoute3, { headers: {}, body: { cwd: dir } })
+  assert.equal(deniedCompat.status, 401, 'a better-sidebar path must ask the same service')
+  check('the better-sidebar compatibility routes are gated')
+
+  const infoRoute3 = routes3.find((route) => route.path === '/remote-suite/terminal/info')
+  assert.ok(infoRoute3 !== undefined, 'the terminal info route must be mounted')
+  const deniedInfo = await callRoute(infoRoute3, { method: 'GET', headers: {} })
+  assert.equal(deniedInfo.status, 401, 'the terminal probe must not describe shells to a stranger')
+  check('the terminal info route is gated')
+
+  for (const upgrade of upgrades3) {
+    const socket = {
+      written: [],
+      destroyed: false,
+      write(chunk) {
+        this.written.push(String(chunk))
+      },
+      destroy() {
+        this.destroyed = true
+      },
+      on() {},
+      end() {},
+      setTimeout() {},
+      setNoDelay() {},
+      setKeepAlive() {},
+    }
+    sockets3.push(socket)
+    upgrade.handler({ url: upgrade.path, method: 'GET', headers: {} }, socket, Buffer.alloc(0))
+    assert.ok(
+      socket.written.some((line) => line.startsWith('HTTP/1.1 401')),
+      `the ${upgrade.path} upgrade must answer 401 before the protocol owner sees it`,
+    )
+    assert.equal(socket.destroyed, true, `the ${upgrade.path} upgrade must close a refused socket`)
+  }
+  check('every upgrade route is gated')
+
+  if (typeof dispose3 === 'function') dispose3()
 }
 
 console.log('smoke ok')
