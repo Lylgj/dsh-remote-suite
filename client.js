@@ -5554,6 +5554,15 @@ window.__ModuleLoader__.load({
 					s.booting = true;
 					void boot(s);
 				}
+				// 换容器（浮层 ↔ 侧栏页签）后重新按新容器的配色着色。
+				if (s.term !== null && s.term !== undefined) {
+					try {
+						s.term.options.theme = paletteFor(s);
+						s.term.refresh(0, s.term.rows - 1);
+					} catch {
+						/* 终端已销毁。 */
+					}
+				}
 				raf(() => refit(key));
 				return s;
 			}
@@ -5603,12 +5612,47 @@ window.__ModuleLoader__.load({
 			 * @param palette - xterm 调色板。
 			 * @returns 无返回值。
 			 */
+			/**
+			 * 用「终端真正被放进去的那个容器」的背景色判断深浅。
+			 * 宿主把主题挂在 `<html>` 还是 `<body>`、挂 class 还是 style，各版本不一致，
+			 * 但容器自己的 `--t-bg` 一定已经算好了，拿它当准绳最稳。
+			 * @param s - 会话记录。
+			 * @returns xterm 调色板。
+			 */
+			function paletteFor(s) {
+				let el = s.container;
+				// 容器本身通常是透明的一层，背景色在祖先上；向上找最多六层，
+				// 找到第一个真正画了背景的元素为止。
+				for (let depth = 0; el !== null && el !== undefined && depth < 6; depth += 1) {
+					try {
+						const background = globalThis.getComputedStyle(el).backgroundColor;
+						const match = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/.exec(background);
+						if (match !== null) {
+							const alpha = match[4] === undefined ? 1 : Number(match[4]);
+							if (alpha > 0.05) {
+								const [r, g, b] = [Number(match[1]), Number(match[2]), Number(match[3])];
+								return terminalPalette(0.299 * r + 0.587 * g + 0.114 * b < 128);
+							}
+						}
+					} catch {
+						/* 元素还没进文档。 */
+					}
+					el = el.parentElement;
+				}
+				return themeOf(getSettings().theme);
+			}
+
+			/**
+			 * 把主题同步到所有常驻终端。
+			 * @param palette - 兜底调色板（容器量不到颜色时用）。
+			 * @returns 无返回值。
+			 */
 			function applyTheme(palette) {
 				for (const s of sessions.values()) {
 					const term = s.term;
 					if (term === null || term === undefined) continue;
 					try {
-						term.options.theme = palette;
+						term.options.theme = s.container === null || s.container === undefined ? palette : paletteFor(s);
 						// xterm 只在写入时记住调色板；已经在屏幕上的内容要主动重绘，
 						// 否则 WebGL/Canvas 渲染器会保留旧背景，看起来像"没跟着换主题"。
 						term.refresh(0, term.rows - 1);
@@ -5793,9 +5837,8 @@ window.__ModuleLoader__.load({
 					lineHeight: 1.2,
 					scrollback: 10000,
 					allowProposedApi: true,
-					// Read the host at creation time: a pane that mounts while DSH is
-					// already themed must not inherit a stale guess from load time.
-					theme: terminalPalette(hostIsDark())
+					// 以容器实际算出的背景色为准（见 paletteFor），避免加载早期猜错深浅。
+					theme: paletteFor(s)
 				});
 				const fit = new globalThis.FitAddon.FitAddon();
 				term.loadAddon(fit);
@@ -6392,6 +6435,10 @@ window.__ModuleLoader__.load({
 			const [info, setInfo] = react.useState(null);
 
 			const settings = useSettings();
+			// 主题一变就把新配色重绘到所有常驻终端：工具条只是 CSS，画布得主动刷新。
+			react.useEffect(() => {
+				core.applyTheme(themeOf(settings.theme));
+			}, [settings.theme]);
 			const integrationMode = useIntegrationMode();
 			const { toast, toastAt, flash, trackPointer } = useFlash();
 			// 订阅核心状态：连接状态/错误/常驻数量变化时重渲染工具条。
@@ -6749,6 +6796,10 @@ window.__ModuleLoader__.load({
 			if (sessionId !== "" && typeof props?.onKey === "function") props.onKey(activeKey);
 
 			const settings = useSettings();
+			// 主题一变就把新配色重绘到所有常驻终端：工具条只是 CSS，画布得主动刷新。
+			react.useEffect(() => {
+				core.applyTheme(themeOf(settings.theme));
+			}, [settings.theme]);
 			const { toast, toastAt, flash, trackPointer } = useFlash();
 			// 订阅核心状态：连接状态/错误/常驻数量变化时重渲染工具条。
 			useCoreVersion();
