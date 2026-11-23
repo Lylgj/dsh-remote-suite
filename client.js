@@ -4527,7 +4527,8 @@ window.__ModuleLoader__.load({
       "后台终端：{count}": "Terminals: {count}",
       "已复制 {count} 个字符": "Copied {count} characters",
       "选择本工作区终端使用的 shell（默认 shell / Windows:cmd / Windows:PowerShell / WSL / SSH）": "Shell used by terminals in this workspace (default shell / Windows:cmd / Windows:PowerShell / WSL / SSH)",
-      "三个开关互相独立、可同时打开；Ctrl+C 只在有选中内容时复制，读取剪贴板需 localhost 或 HTTPS": "The three switches are independent and may all be on; Ctrl+C copies only when something is selected, and reading the clipboard needs localhost or HTTPS",
+      "复制与粘贴": "Copy and paste",
+      "行为": "Behaviour",
       "有选中内容时 Ctrl+C（macOS 上 Cmd+C）复制选中文本；没有选中时仍然发送 ^C 中断命令": "With a selection, Ctrl+C (Cmd+C on macOS) copies it; with nothing selected it still sends ^C to interrupt",
       "在终端里点右键直接粘贴剪贴板内容（读取剪贴板需要 localhost 或 HTTPS）": "Right-click in the terminal pastes the clipboard directly (reading the clipboard needs localhost or HTTPS)",
       "当前为浮层：终端盖在 DSH 上。点击改为并排（DSH 让出空间）": "Floating now: the terminal covers DSH. Click to dock side by side (DSH makes room)",
@@ -4919,7 +4920,7 @@ window.__ModuleLoader__.load({
 /* 主题变量：面板与悬浮按钮是兄弟节点，各自带 data-theme，所以两套变量写在二者共用的选择器上。 */
 .dsh-term-panel[data-theme="light"],.dsh-term-tab[data-theme="light"],.dsh-term-embed[data-theme="light"]{color-scheme:light;
   --t-bg:#ffffff;--t-fg:#1f2328;--t-muted:#6e7781;--t-head-bg:#f6f8fa;
-  --t-border-soft:rgba(0,0,0,.10);
+  --t-border-soft:rgba(0,0,0,.10);--t-menu-bg:#ffffff;--t-on-bg:#3b82f6;--t-on-fg:#0b1220;--t-chip-bg:#f6f8fa;
   --t-btn-bg:#ffffff;--t-btn-fg:#24292f;--t-btn-border:rgba(0,0,0,.15);--t-btn-hover-bg:#eaeef2;--t-btn-hover-fg:#000000;
   --t-dot:#d0d7de;--t-dot-on:#1a7f37;--t-dot-on-glow:0 0 6px rgba(26,127,55,.5);--t-dot-err:#cf222e;
   --t-tab-bg:#ffffff;--t-tab-hover-bg:#f3f4f6;--t-tab-fg:#1f2328;--t-tab-border:rgba(0,0,0,.16);
@@ -4928,7 +4929,7 @@ window.__ModuleLoader__.load({
   --t-count-bg:rgba(0,0,0,.08);--t-count-fg:#24292f;--t-grip-hover:rgba(9,105,218,.25)}
 .dsh-term-panel[data-theme="dark"],.dsh-term-tab[data-theme="dark"],.dsh-term-embed[data-theme="dark"]{color-scheme:dark;
   --t-bg:#1b1b25;--t-fg:#cdd6f4;--t-muted:#7f849c;--t-head-bg:rgba(255,255,255,.03);
-  --t-border-soft:rgba(255,255,255,.10);
+  --t-border-soft:rgba(255,255,255,.10);--t-menu-bg:#22222e;--t-on-bg:#3b82f6;--t-on-fg:#0b1220;--t-chip-bg:rgba(255,255,255,.06);
   --t-btn-bg:transparent;--t-btn-fg:#bac2de;--t-btn-border:rgba(255,255,255,.18);--t-btn-hover-bg:rgba(255,255,255,.10);--t-btn-hover-fg:#ffffff;
   --t-dot:#6c7086;--t-dot-on:#a6e3a1;--t-dot-on-glow:0 0 6px #a6e3a1;--t-dot-err:#f38ba8;
   --t-tab-bg:#26263a;--t-tab-hover-bg:#31314a;--t-tab-fg:#cdd6f4;--t-tab-border:rgba(255,255,255,.18);
@@ -4979,13 +4980,21 @@ window.__ModuleLoader__.load({
 .dsh-term-err{position:absolute;left:0;right:0;bottom:0;padding:8px 10px;color:var(--t-err-fg);background:var(--t-err-bg);font:400 12px/1.6 ui-sans-serif,system-ui,sans-serif;white-space:pre-wrap}
 .dsh-term-count{padding:0 6px;border-radius:8px;background:var(--t-count-bg);color:var(--t-count-fg);font:600 10px/16px ui-monospace,SFMono-Regular,Menlo,monospace}
 .dsh-term-btn[data-active="1"]{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg);border-color:var(--t-btn-hover-bg)}
-.dsh-term-menu{display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:0 0 auto;padding:6px 10px;
-  border-bottom:1px solid var(--t-border-soft);background:var(--t-head-bg);
-  font:500 11px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--t-fg)}
-.dsh-term-menu-label{color:var(--t-muted)}
-.dsh-term-opt{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
-.dsh-term-opt input{margin:0;cursor:pointer;accent-color:#0969da}
-.dsh-term-menu-hint{flex:1 1 100%;color:var(--t-muted);font-weight:400}
+.dsh-term-menu-anchor{position:relative;flex:0 0 auto;height:0}
+.dsh-term-menu{position:absolute;top:6px;right:10px;z-index:30;display:flex;flex-direction:column;gap:10px;
+  min-width:252px;max-width:344px;padding:12px 14px;border-radius:12px;border:1px solid var(--t-border-soft);
+  background:var(--t-menu-bg);color:var(--t-fg);box-shadow:0 14px 36px rgba(0,0,0,.28);
+  font:500 11px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.dsh-term-menu-title{font-size:12px;font-weight:600;letter-spacing:.01em}
+.dsh-term-menu-group{display:flex;flex-direction:column;gap:6px}
+.dsh-term-menu-label{color:var(--t-muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.dsh-term-menu-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dsh-term-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--t-btn-border);background:var(--t-chip-bg);color:var(--t-btn-fg);
+  font:inherit;user-select:none}
+.dsh-term-chip:hover{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg)}
+.dsh-term-chip input{position:absolute;width:0;height:0;opacity:0;pointer-events:none}
+.dsh-term-chip[data-on="1"]{background:var(--t-on-bg);border-color:var(--t-on-bg);color:var(--t-on-fg);font-weight:600}
 .dsh-term-toast{position:absolute;z-index:2;padding:4px 12px;border-radius:999px;pointer-events:none;white-space:nowrap;
   background:var(--t-count-bg);color:var(--t-count-fg);box-shadow:0 4px 14px rgba(0,0,0,.20);
   font:500 11px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -4994,11 +5003,10 @@ window.__ModuleLoader__.load({
 .dsh-term-toast[data-pos="top"]{left:50%;top:8px;transform:translateX(-50%)}
 /* 跟随鼠标：脱离面板流，按视口坐标定位在指针右上方，不遮挡刚选中的内容 */
 .dsh-term-toast[data-pos="cursor"]{position:fixed;transform:translate(14px,-140%)}
-.dsh-term-seg{flex:0 0 auto;padding:1px 8px;border-radius:999px;cursor:pointer;
-  border:1px solid var(--t-btn-border);background:var(--t-btn-bg);color:var(--t-btn-fg);
-  font:500 11px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.dsh-term-seg{flex:0 0 auto;padding:3px 10px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--t-btn-border);background:var(--t-chip-bg);color:var(--t-btn-fg);font:inherit}
 .dsh-term-seg:hover{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg)}
-.dsh-term-seg[data-active="1"]{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg);border-color:var(--t-btn-hover-bg);font-weight:600}
+.dsh-term-seg[data-active="1"]{background:var(--t-on-bg);border-color:var(--t-on-bg);color:var(--t-on-fg);font-weight:600}
 `;
 
 		/**
@@ -5541,11 +5549,11 @@ window.__ModuleLoader__.load({
 			 * @returns 无返回值。
 			 */
 			/**
-			 * 清屏：连同还没写进终端的旧输出一起丢掉。
+			 * 清屏：保留光标所在的那一行（shell 提示符），连同还没写进终端的旧输出一起丢掉。
 			 *
 			 * xterm 的写入是排队处理的，`clear()` 只抹掉当前画面——排在前面的旧输出随后
 			 * 照常刷出来，看起来就像“清屏之后内容又回来了”。所以先丢掉本连接尚未合批刷出
-			 * 的片段，再用擦除序列走同一个写入队列，把队列里残留的字节一并清掉。
+			 * 的片段；再用一个空写入当“水位线”，等它之前的字节都刷完，最后再清一次。
 			 * @param key - 会话键。
 			 * @returns 无返回值。
 			 */
@@ -5555,11 +5563,20 @@ window.__ModuleLoader__.load({
 				if (Array.isArray(s.pending)) s.pending.length = 0;
 				const term = s.term;
 				if (term === null || term === undefined) return;
+				/** 抹掉当前画面；光标所在行（提示符）会被 clear() 挪到首行，得以保留。 */
+				const wipe = () => {
+					try {
+						term.clear();
+						term.scrollToBottom();
+						term.refresh(0, term.rows - 1);
+					} catch {
+						/* 终端已销毁。 */
+					}
+				};
 				try {
-					term.clear();
-					term.write("\x1b[3J\x1b[2J\x1b[H");
-					term.scrollToBottom();
-					term.refresh(0, term.rows - 1);
+					wipe();
+					// 空写入当“水位线”：它之前的旧输出都刷完之后再清一次，队列里的内容不会漏出来。
+					term.write("", wipe);
 				} catch {
 					/* 终端已销毁。 */
 				}
@@ -6372,37 +6389,63 @@ window.__ModuleLoader__.load({
 		function renderMenu(options) {
 			return h(
 				"div",
-				{ className: "dsh-term-menu", "data-dsh-terminal-menu": "1" },
-				h("span", { className: "dsh-term-menu-label" }, tr("复制/粘贴")),
-				...CLIPBOARD_OPTIONS.map((opt) =>
-					h(
-						"label",
-						{ className: "dsh-term-opt", key: opt.key, title: tr(opt.title) },
-						h("input", {
-							type: "checkbox",
-							checked: options.clipboard[opt.key] === true,
-							onChange: () => options.onToggle(opt.key)
-						}),
-						tr(opt.label)
-					)
-				),
+				{ className: "dsh-term-menu-anchor" },
 				h(
-					"span",
-					{ className: "dsh-term-menu-hint" },
-					tr("三个开关互相独立、可同时打开；Ctrl+C 只在有选中内容时复制，读取剪贴板需 localhost 或 HTTPS")
-				),
-				h("span", { className: "dsh-term-menu-label" }, tr("提示位置")),
-				...TOAST_POSITIONS.map((pos) =>
+					"div",
+					{
+						className: "dsh-term-menu",
+						"data-dsh-terminal-menu": "1",
+						role: "dialog",
+						"aria-label": tr("复制与粘贴")
+					},
+					h("div", { className: "dsh-term-menu-title" }, tr("复制与粘贴")),
 					h(
-						"button",
-						{
-							key: pos.key,
-							className: "dsh-term-seg",
-							"data-active": options.clipboard.toastPos === pos.key ? "1" : "0",
-							title: tr(pos.title),
-							onClick: () => options.onToastPos(pos.key)
-						},
-						tr(pos.label)
+						"div",
+						{ className: "dsh-term-menu-group" },
+						h("div", { className: "dsh-term-menu-label" }, tr("行为")),
+						h(
+							"div",
+							{ className: "dsh-term-menu-row" },
+							...CLIPBOARD_OPTIONS.map((opt) =>
+								h(
+									"label",
+									{
+										className: "dsh-term-chip",
+										key: opt.key,
+										title: tr(opt.title),
+										"data-on": options.clipboard[opt.key] === true ? "1" : "0"
+									},
+									h("input", {
+										type: "checkbox",
+										checked: options.clipboard[opt.key] === true,
+										onChange: () => options.onToggle(opt.key)
+									}),
+									h("span", null, tr(opt.label))
+								)
+							)
+						)
+					),
+					h(
+						"div",
+						{ className: "dsh-term-menu-group" },
+						h("div", { className: "dsh-term-menu-label" }, tr("提示位置")),
+						h(
+							"div",
+							{ className: "dsh-term-menu-row" },
+							...TOAST_POSITIONS.map((pos) =>
+								h(
+									"button",
+									{
+										key: pos.key,
+										className: "dsh-term-seg",
+										"data-active": options.clipboard.toastPos === pos.key ? "1" : "0",
+										title: tr(pos.title),
+										onClick: () => options.onToastPos(pos.key)
+									},
+									tr(pos.label)
+								)
+							)
+						)
 					)
 				)
 			);

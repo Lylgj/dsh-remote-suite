@@ -352,7 +352,16 @@ console.log('ok  terminal palette follows the host theme')
 
 // Clearing must also drop the output that is still queued for xterm: a plain
 // term.clear() only wipes the painted screen, and the queued bytes then paint
-// the old lines back, which reads as "the content came back".
+// the old lines back, which reads as "the content came back". It must also keep
+// the prompt line, so the erase-sequence variant is not an option.
 assert.match(source, /if \(Array\.isArray\(s\.pending\)\) s\.pending\.length = 0/, 'clear drops queued output')
-assert.match(source, /term\.write\("\\x1b\[3J\\x1b\[2J\\x1b\[H"\)/, 'clear writes the erase sequence')
+assert.match(source, /term\.write\("", wipe\)/, 'clear waits for the write queue to drain, then wipes again')
+assert.match(source, /const wipe = \(\) => \{[\s\S]{0,200}term\.clear\(\);/, 'the wipe keeps the prompt line via term.clear()')
+assert.ok(!source.includes('\\x1b[3J'), 'clear must not wipe the prompt line with the erase sequence')
+
+// The copy/paste settings must be a floating popover: an inline band pushes the
+// terminal down, which makes React reflow the body on every open and close.
+assert.match(source, /className: "dsh-term-menu-anchor"/, 'the copy menu floats above the terminal')
+assert.match(source, /className: "dsh-term-chip"/, 'the clipboard switches render as chips')
+assert.ok(!source.includes('dsh-term-menu-hint'), 'the explanatory line under the switches is gone')
 console.log('client smoke ok')
