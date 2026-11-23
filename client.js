@@ -4920,7 +4920,7 @@ window.__ModuleLoader__.load({
 /* 主题变量：面板与悬浮按钮是兄弟节点，各自带 data-theme，所以两套变量写在二者共用的选择器上。 */
 .dsh-term-panel[data-theme="light"],.dsh-term-tab[data-theme="light"],.dsh-term-embed[data-theme="light"]{color-scheme:light;
   --t-bg:#ffffff;--t-fg:#1f2328;--t-muted:#6e7781;--t-head-bg:#f6f8fa;
-  --t-border-soft:rgba(0,0,0,.10);--t-menu-bg:#ffffff;--t-on-bg:#3b82f6;--t-on-fg:#0b1220;--t-chip-bg:#f6f8fa;
+  --t-border-soft:rgba(0,0,0,.10);--t-menu-bg:#ffffff;--t-menu-border:rgba(15,23,42,.08);--t-chip-bg:#f8fafc;--t-on-bg:#dbeafe;--t-on-fg:#1d4ed8;--t-on-border:#bfdbfe;
   --t-btn-bg:#ffffff;--t-btn-fg:#24292f;--t-btn-border:rgba(0,0,0,.15);--t-btn-hover-bg:#eaeef2;--t-btn-hover-fg:#000000;
   --t-dot:#d0d7de;--t-dot-on:#1a7f37;--t-dot-on-glow:0 0 6px rgba(26,127,55,.5);--t-dot-err:#cf222e;
   --t-tab-bg:#ffffff;--t-tab-hover-bg:#f3f4f6;--t-tab-fg:#1f2328;--t-tab-border:rgba(0,0,0,.16);
@@ -4929,7 +4929,7 @@ window.__ModuleLoader__.load({
   --t-count-bg:rgba(0,0,0,.08);--t-count-fg:#24292f;--t-grip-hover:rgba(9,105,218,.25)}
 .dsh-term-panel[data-theme="dark"],.dsh-term-tab[data-theme="dark"],.dsh-term-embed[data-theme="dark"]{color-scheme:dark;
   --t-bg:#1b1b25;--t-fg:#cdd6f4;--t-muted:#7f849c;--t-head-bg:rgba(255,255,255,.03);
-  --t-border-soft:rgba(255,255,255,.10);--t-menu-bg:#22222e;--t-on-bg:#3b82f6;--t-on-fg:#0b1220;--t-chip-bg:rgba(255,255,255,.06);
+  --t-border-soft:rgba(255,255,255,.10);--t-menu-bg:#242432;--t-menu-border:rgba(255,255,255,.10);--t-chip-bg:rgba(255,255,255,.05);--t-on-bg:rgba(96,165,250,.22);--t-on-fg:#bfdbfe;--t-on-border:rgba(96,165,250,.38);
   --t-btn-bg:transparent;--t-btn-fg:#bac2de;--t-btn-border:rgba(255,255,255,.18);--t-btn-hover-bg:rgba(255,255,255,.10);--t-btn-hover-fg:#ffffff;
   --t-dot:#6c7086;--t-dot-on:#a6e3a1;--t-dot-on-glow:0 0 6px #a6e3a1;--t-dot-err:#f38ba8;
   --t-tab-bg:#26263a;--t-tab-hover-bg:#31314a;--t-tab-fg:#cdd6f4;--t-tab-border:rgba(255,255,255,.18);
@@ -4980,21 +4980,22 @@ window.__ModuleLoader__.load({
 .dsh-term-err{position:absolute;left:0;right:0;bottom:0;padding:8px 10px;color:var(--t-err-fg);background:var(--t-err-bg);font:400 12px/1.6 ui-sans-serif,system-ui,sans-serif;white-space:pre-wrap}
 .dsh-term-count{padding:0 6px;border-radius:8px;background:var(--t-count-bg);color:var(--t-count-fg);font:600 10px/16px ui-monospace,SFMono-Regular,Menlo,monospace}
 .dsh-term-btn[data-active="1"]{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg);border-color:var(--t-btn-hover-bg)}
-.dsh-term-menu-anchor{position:relative;flex:0 0 auto;height:0}
-.dsh-term-menu{position:absolute;top:6px;right:10px;z-index:30;display:flex;flex-direction:column;gap:10px;
-  min-width:252px;max-width:344px;padding:12px 14px;border-radius:12px;border:1px solid var(--t-border-soft);
-  background:var(--t-menu-bg);color:var(--t-fg);box-shadow:0 14px 36px rgba(0,0,0,.28);
+.dsh-term-menu-anchor{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center}
+.dsh-term-menu-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.18)}
+.dsh-term-menu{position:relative;display:flex;flex-direction:column;gap:12px;
+  min-width:300px;max-width:400px;padding:16px 18px;border-radius:14px;border:1px solid var(--t-menu-border);
+  background:var(--t-menu-bg);color:var(--t-fg);box-shadow:0 20px 48px rgba(15,23,42,.32);
   font:500 11px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-.dsh-term-menu-title{font-size:12px;font-weight:600;letter-spacing:.01em}
-.dsh-term-menu-group{display:flex;flex-direction:column;gap:6px}
+.dsh-term-menu-title{font-size:13px;font-weight:600;letter-spacing:.01em}
+.dsh-term-menu-group{display:flex;flex-direction:column;gap:7px}
 .dsh-term-menu-label{color:var(--t-muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
-.dsh-term-menu-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dsh-term-menu-row{display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
 .dsh-term-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;cursor:pointer;
   border:1px solid var(--t-btn-border);background:var(--t-chip-bg);color:var(--t-btn-fg);
-  font:inherit;user-select:none}
+  font:inherit;user-select:none;white-space:nowrap}
 .dsh-term-chip:hover{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg)}
 .dsh-term-chip input{position:absolute;width:0;height:0;opacity:0;pointer-events:none}
-.dsh-term-chip[data-on="1"]{background:var(--t-on-bg);border-color:var(--t-on-bg);color:var(--t-on-fg);font-weight:600}
+.dsh-term-chip[data-on="1"]{background:var(--t-on-bg);border-color:var(--t-on-border);color:var(--t-on-fg);font-weight:600}
 .dsh-term-toast{position:absolute;z-index:2;padding:4px 12px;border-radius:999px;pointer-events:none;white-space:nowrap;
   background:var(--t-count-bg);color:var(--t-count-fg);box-shadow:0 4px 14px rgba(0,0,0,.20);
   font:500 11px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -5003,10 +5004,10 @@ window.__ModuleLoader__.load({
 .dsh-term-toast[data-pos="top"]{left:50%;top:8px;transform:translateX(-50%)}
 /* 跟随鼠标：脱离面板流，按视口坐标定位在指针右上方，不遮挡刚选中的内容 */
 .dsh-term-toast[data-pos="cursor"]{position:fixed;transform:translate(14px,-140%)}
-.dsh-term-seg{flex:0 0 auto;padding:3px 10px;border-radius:999px;cursor:pointer;
+.dsh-term-seg{flex:0 0 auto;padding:3px 9px;border-radius:999px;cursor:pointer;white-space:nowrap;
   border:1px solid var(--t-btn-border);background:var(--t-chip-bg);color:var(--t-btn-fg);font:inherit}
 .dsh-term-seg:hover{background:var(--t-btn-hover-bg);color:var(--t-btn-hover-fg)}
-.dsh-term-seg[data-active="1"]{background:var(--t-on-bg);border-color:var(--t-on-bg);color:var(--t-on-fg);font-weight:600}
+.dsh-term-seg[data-active="1"]{background:var(--t-on-bg);border-color:var(--t-on-border);color:var(--t-on-fg);font-weight:600}
 `;
 
 		/**
@@ -6390,6 +6391,7 @@ window.__ModuleLoader__.load({
 			return h(
 				"div",
 				{ className: "dsh-term-menu-anchor" },
+				h("div", { className: "dsh-term-menu-backdrop" }),
 				h(
 					"div",
 					{
