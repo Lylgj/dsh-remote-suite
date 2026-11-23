@@ -256,9 +256,15 @@ assert.match(source, /if \(frame\.ok !== undefined\) return/, 'watch acks must n
 assert.match(source, /if \(frame\.dir !== dirRef\.current\) return/, 'only the level in view is repainted')
 assert.match(
   source,
-  /loadRef\.current\(dirRef\.current \|\| undefined, true\)/,
+  /loadRef\.current\(dirRef\.current \|\| undefined, true, true\)/,
   'the periodic refresh keeps the directory in view',
 )
+assert.match(
+  source,
+  /if \(quiet === true\) refreshOpenDirs\(\)\s*\n\s*else setKids\(\{\}\)/,
+  'a background refresh keeps the open levels expanded',
+)
+assert.match(source, /loadRef\.current\(frame\.dir, true, true\)/, 'a watch push keeps the open levels expanded')
 console.log('ok  live refresh keeps the directory in view')
 
 // The pane is a takeover of the Host's own file pane, so it speaks the Host

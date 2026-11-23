@@ -3529,6 +3529,7 @@ window.__ModuleLoader__.load({
       const [findHit, setFindHit] = React.useState(0)
       const dirRef = React.useRef('')
       const busyRef = React.useRef(false)
+      const kidsRef = React.useRef({})
       const loadRef = React.useRef(null)
       const taRef = React.useRef(null)
       const hlRef = React.useRef(null)
@@ -3537,6 +3538,7 @@ window.__ModuleLoader__.load({
 
       dirRef.current = dir
       busyRef.current = busy
+      kidsRef.current = kids
 
       /**
        * One level of the tree. `force` skips the host's 1.5 s listing cache so a
@@ -3587,8 +3589,27 @@ window.__ModuleLoader__.load({
         return () => clearTimeout(id)
       }, [notice])
 
+      /**
+       * Re-list every open level after a background refresh: the tree keeps the
+       * directories the reader expanded, and their children stay current.
+       */
+      function refreshOpenDirs() {
+        for (const path of Object.keys(kidsRef.current)) {
+          sidebarCall('fs.tree', Object.assign({}, scope, { path })).then(
+            (value) => {
+              const children = value.entries || []
+              setKids((previous) => (previous[path] === undefined ? previous : { ...previous, [path]: children }))
+            },
+            () => {
+              // Vanished directory: leave the open level as it is; the next
+              // navigation reports it.
+            },
+          )
+        }
+      }
+
       const load = React.useCallback(
-        (path, force) =>
+        (path, force, quiet) =>
           sidebarCall(
             'fs.tree',
             Object.assign({}, scope, path === undefined ? {} : { path }, force === true ? { fresh: true } : {}),
@@ -3597,7 +3618,10 @@ window.__ModuleLoader__.load({
               setRoot((previous) => (previous === '' ? value.path : previous))
               if (path === undefined || path === value.path) setDir(value.path)
               setRows(value.entries || [])
-              setKids({})
+              // A background refresh (the 5 s repaint, a watch push) must not
+              // fold the directories the reader opened: only a navigation does.
+              if (quiet === true) refreshOpenDirs()
+              else setKids({})
               setTruncated(value.truncated === true)
               setError(null)
               return value
@@ -3625,11 +3649,11 @@ window.__ModuleLoader__.load({
         // opened.
         const timer = setInterval(() => {
           if (busyRef.current) return
-          loadRef.current(dirRef.current || undefined, true)
+          loadRef.current(dirRef.current || undefined, true, true)
         }, 5000)
         const onFocus = () => {
           if (busyRef.current) return
-          loadRef.current(dirRef.current || undefined, true)
+          loadRef.current(dirRef.current || undefined, true, true)
         }
         window.addEventListener('focus', onFocus)
         return () => {
@@ -3669,7 +3693,7 @@ window.__ModuleLoader__.load({
             // Only the level in view is repainted: a change reported for the
             // workspace root (we watch it for sibling edits) must not navigate.
             if (frame.dir !== dirRef.current) return
-            loadRef.current(frame.dir, true)
+            loadRef.current(frame.dir, true, true)
           }
           socket.onclose = () => {
             if (closed) return
