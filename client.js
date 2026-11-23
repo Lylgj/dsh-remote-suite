@@ -203,7 +203,13 @@ window.__ModuleLoader__.load({
       try {
         if (typeof MutationObserver !== 'undefined') {
           observer = new MutationObserver(update)
-          observer.observe(document.body, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] })
+          // The host may put the theme on <body> or on <html> depending on the
+          // build, so watch both; the root also covers a stylesheet swap.
+          const options = { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] }
+          observer.observe(document.body, options)
+          if (document.documentElement !== null && document.documentElement !== document.body) {
+            observer.observe(document.documentElement, options)
+          }
         }
       } catch (error) {
         observer = null
@@ -2869,6 +2875,7 @@ window.__ModuleLoader__.load({
           if (liveNow === null) return
           try {
             liveNow.term.options.theme = terminalPalette(dark)
+            liveNow.term.refresh(0, liveNow.term.rows - 1)
           } catch (error) {
             void error
           }
@@ -5602,6 +5609,9 @@ window.__ModuleLoader__.load({
 					if (term === null || term === undefined) continue;
 					try {
 						term.options.theme = palette;
+						// xterm 只在写入时记住调色板；已经在屏幕上的内容要主动重绘，
+						// 否则 WebGL/Canvas 渲染器会保留旧背景，看起来像"没跟着换主题"。
+						term.refresh(0, term.rows - 1);
 					} catch {
 						/* 终端已销毁。 */
 					}
@@ -5783,7 +5793,9 @@ window.__ModuleLoader__.load({
 					lineHeight: 1.2,
 					scrollback: 10000,
 					allowProposedApi: true,
-					theme: themeOf(getSettings().theme)
+					// Read the host at creation time: a pane that mounts while DSH is
+					// already themed must not inherit a stale guess from load time.
+					theme: terminalPalette(hostIsDark())
 				});
 				const fit = new globalThis.FitAddon.FitAddon();
 				term.loadAddon(fit);
