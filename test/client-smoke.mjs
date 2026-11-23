@@ -329,4 +329,18 @@ for (const call of ['tr(opt.label)', 'tr(opt.title)', 'tr(pos.label)', 'tr(pos.t
   assert.ok(source.includes(call), `the terminal menus must translate at render time: ${call}`)
 }
 console.log('ok  terminal copy is translated')
+
+// The terminal palette follows the Host's theme instead of a manual switch:
+// DSH's own terminal is dark in a dark interface, so a stored light/dark
+// preference would only make this pane disagree with everything around it.
+assert.ok(!source.includes('dsh.terminal.theme'), 'the terminal must not remember a theme of its own')
+assert.ok(
+  source.includes('return hostIsDark() ? THEME_DARK_NAME : THEME_LIGHT_NAME;'),
+  'the terminal theme must be read from the Host on every load',
+)
+assert.ok(source.includes('watchHostTheme('), 'the terminal must follow the Host when its theme changes')
+for (const gone of ['themeButton', 'onTheme', 'toggleTheme']) {
+  assert.ok(!source.includes(gone), `the manual theme switch must be removed: ${gone}`)
+}
+console.log('ok  terminal palette follows the host theme')
 console.log('client smoke ok')

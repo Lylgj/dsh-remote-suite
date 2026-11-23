@@ -4513,8 +4513,6 @@ window.__ModuleLoader__.load({
       "重新连接当前工作区的 PTY": "Reconnect this workspace's PTY",
       "提示显示在终端面板底部中央": "Toast at the bottom centre of the panel",
       "xterm.js 加载失败": "xterm.js failed to load",
-      "当前为暗色。点击切换为浅色": "Dark theme. Click for the light one",
-      "当前为浅色。点击切换为暗色": "Light theme. Click for the dark one",
       "提示显示在工具条下方居中": "Toast centred below the toolbar",
       "复制/粘贴后不弹任何提示": "No toast after copying or pasting",
       "收起终端（Ctrl+`）": "Collapse the terminal (Ctrl+`)",
@@ -4539,8 +4537,6 @@ window.__ModuleLoader__.load({
       "（当前）": " (current)",
       "提示位置": "Toast position",
       "已连接": "Connected",
-      "暗色": "Dark",
-      "浅色": "Light",
       "复制": "Copy",
       "清屏": "Clear",
       "重连": "Reconnect",
@@ -4770,8 +4766,6 @@ window.__ModuleLoader__.load({
 		/** 浮层：终端盖在 DSH 之上。 */
 		const MODE_OVERLAY = "overlay";
 
-		/** localStorage 键：明暗主题。 */
-		const KEY_THEME = "dsh.terminal.theme";
 		/** 浅色主题名。 */
 		const THEME_LIGHT_NAME = "light";
 		/** 暗色主题名。 */
@@ -5106,11 +5100,11 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * 从 localStorage 读取明暗主题，默认浅色。
+		 * 明暗主题：跟随宿主页面（DSH 自己的终端也随页面主题走），没有手动开关。
 		 * @returns 主题名。
 		 */
 		function readTheme() {
-			return globalThis.localStorage?.getItem(KEY_THEME) === THEME_DARK_NAME ? THEME_DARK_NAME : THEME_LIGHT_NAME;
+			return hostIsDark() ? THEME_DARK_NAME : THEME_LIGHT_NAME;
 		}
 
 		/**
@@ -5268,7 +5262,7 @@ window.__ModuleLoader__.load({
 		try {
 			settings = { theme: readTheme(), clipboard: readClipboard() };
 		} catch {
-			settings = { theme: THEME_LIGHT_NAME, clipboard: { ...CLIPBOARD_DEFAULTS } };
+			settings = { theme: hostIsDark() ? THEME_DARK_NAME : THEME_LIGHT_NAME, clipboard: { ...CLIPBOARD_DEFAULTS } };
 		}
 		/** 设置变化的订阅者。 */
 		const settingsListeners = new Set();
@@ -5301,13 +5295,6 @@ window.__ModuleLoader__.load({
 		function updateSettings(patch) {
 			const prev = settings;
 			const next = { ...prev, ...patch };
-			if (patch.theme !== undefined) {
-				try {
-					globalThis.localStorage?.setItem(KEY_THEME, next.theme);
-				} catch {
-					/* 隐私模式：仅本次会话有效。 */
-				}
-			}
 			if (patch.clipboard !== undefined) saveClipboard(next.clipboard);
 			settings = next;
 			for (const fn of [...settingsListeners]) {
@@ -5320,10 +5307,12 @@ window.__ModuleLoader__.load({
 			return next;
 		}
 
-		/** 在浅色/暗色之间切换（并持久化、同步所有终端）。 */
-		function toggleTheme() {
-			updateSettings({ theme: settings.theme === THEME_DARK_NAME ? THEME_LIGHT_NAME : THEME_DARK_NAME });
-		}
+		// 宿主切换明暗（或系统主题变化）时跟着换配色：与 DSH 自己的终端一致，
+		// 所以不再提供手动开关，也不写 localStorage。
+		watchHostTheme(() => {
+			const name = hostIsDark() ? THEME_DARK_NAME : THEME_LIGHT_NAME;
+			if (settings.theme !== name) updateSettings({ theme: name });
+		});
 
 		/**
 		 * 修改复制/粘贴开关。
@@ -6188,11 +6177,7 @@ window.__ModuleLoader__.load({
 			const compact = options.compact === true;
 			const button = (label, title, onClick, extra) =>
 				h("button", { className: "dsh-term-btn", onClick, title, ...(extra ?? {}) }, label);
-			const themeButton = button(
-				options.theme === THEME_DARK_NAME ? tr("暗色") : tr("浅色"),
-				options.theme === THEME_DARK_NAME ? tr("当前为暗色。点击切换为浅色") : tr("当前为浅色。点击切换为暗色"),
-				options.onTheme
-			);
+			// 配色跟着宿主的明暗走，所以这里不再有明暗切换按钮。
 			const menuButton = button(tr("复制"), tr("复制/粘贴设置"), options.onMenu, {
 				"data-active": options.menuOpen ? "1" : "0",
 				"data-copy-menu": "1"
@@ -6247,7 +6232,6 @@ window.__ModuleLoader__.load({
 						"div",
 						{ className: "dsh-term-head-row dsh-term-head-actions" },
 						shellSelect,
-						themeButton,
 						menuButton,
 						clearButton,
 						reconnectButton
@@ -6276,7 +6260,6 @@ window.__ModuleLoader__.load({
 					},
 					options.mode === MODE_DOCK ? tr("并排") : tr("浮层")
 				),
-				themeButton,
 				menuButton,
 				clearButton,
 				reconnectButton,
@@ -6551,8 +6534,6 @@ window.__ModuleLoader__.load({
 					sessions: () => core.keys().map(labelOf),
 					state: () => core.session(activeKeyRef.current)?.status ?? "wait",
 					mode: () => mode,
-					theme: () => getSettings().theme,
-					toggleTheme: () => toggleTheme(),
 					toggleLayout: () => setMode((m) => (m === MODE_DOCK ? MODE_OVERLAY : MODE_DOCK)),
 					frameMargin: () => {
 						const o = document.querySelector("[data-shell-overlay]");
@@ -6603,8 +6584,6 @@ window.__ModuleLoader__.load({
 					},
 					menuOpen,
 					mode,
-					theme: settings.theme,
-					onTheme: toggleTheme,
 					onMenu: () => setMenuOpen((v) => !v),
 					onClear: () => core.clear(activeKey),
 					onReconnect: () => core.reconnect(activeKey),
@@ -6847,8 +6826,6 @@ window.__ModuleLoader__.load({
 					},
 					menuOpen,
 					mode: MODE_DOCK,
-					theme: settings.theme,
-					onTheme: toggleTheme,
 					onMenu: () => setMenuOpen((v) => !v),
 					onClear: () => core.clear(activeKey),
 					onReconnect: () => core.reconnect(activeKey),
