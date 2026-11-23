@@ -5540,11 +5540,26 @@ window.__ModuleLoader__.load({
 			 * @param key - 会话键。
 			 * @returns 无返回值。
 			 */
+			/**
+			 * 清屏：连同还没写进终端的旧输出一起丢掉。
+			 *
+			 * xterm 的写入是排队处理的，`clear()` 只抹掉当前画面——排在前面的旧输出随后
+			 * 照常刷出来，看起来就像“清屏之后内容又回来了”。所以先丢掉本连接尚未合批刷出
+			 * 的片段，再用擦除序列走同一个写入队列，把队列里残留的字节一并清掉。
+			 * @param key - 会话键。
+			 * @returns 无返回值。
+			 */
 			function clear(key) {
 				const s = sessions.get(key);
 				if (s === undefined || s === null) return;
+				if (Array.isArray(s.pending)) s.pending.length = 0;
+				const term = s.term;
+				if (term === null || term === undefined) return;
 				try {
-					s.term?.clear?.();
+					term.clear();
+					term.write("\x1b[3J\x1b[2J\x1b[H");
+					term.scrollToBottom();
+					term.refresh(0, term.rows - 1);
 				} catch {
 					/* 终端已销毁。 */
 				}
@@ -5755,6 +5770,8 @@ window.__ModuleLoader__.load({
 				let opened = false;
 				/** 本连接待写入 xterm 的 PTY 输出，按宏任务合批后一次写。 */
 				const pending = [];
+				/** 挂在会话上，好让「清屏」把这些还没写进去的旧输出一并丢掉。 */
+				s.pending = pending;
 				const flushPending = () => {
 					if (pending.length === 0) return;
 					term.write(pending.join(""));

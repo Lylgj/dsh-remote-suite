@@ -349,4 +349,10 @@ for (const gone of ['themeButton', 'onTheme', 'toggleTheme']) {
   assert.ok(!source.includes(gone), `the manual theme switch must be removed: ${gone}`)
 }
 console.log('ok  terminal palette follows the host theme')
+
+// Clearing must also drop the output that is still queued for xterm: a plain
+// term.clear() only wipes the painted screen, and the queued bytes then paint
+// the old lines back, which reads as "the content came back".
+assert.match(source, /if \(Array\.isArray\(s\.pending\)\) s\.pending\.length = 0/, 'clear drops queued output')
+assert.match(source, /term\.write\("\\x1b\[3J\\x1b\[2J\\x1b\[H"\)/, 'clear writes the erase sequence')
 console.log('client smoke ok')
