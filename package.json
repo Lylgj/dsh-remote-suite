@@ -1,6 +1,6 @@
 {
   "name": "@lylgj/dsh-remote-suite",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "本机、WSL、SSH、Docker 和远程守护进程，接到一个工作区列表里：右侧栏的文件与终端都由本插件接管，一个 remote 工具走遍所有目标。",
   "type": "module",
   "main": "index.js",
