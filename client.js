@@ -4828,7 +4828,7 @@ window.__ModuleLoader__.load({
       "当前：dsh-better-sidebar 的面板（数据由本插件提供）": "Now: dsh-better-sidebar's pane (data served by this plugin)",
       "终端资源加载失败：{detail}\n请确认已刷新页面以加载最新插件。": "The terminal failed to load: {detail}\nReload the page to pick up the latest plugin.",
       "已粘贴 {count} 个字符": "Pasted {count} characters",
-      "[已为工作区 {cwd} 启动常驻终端；切走后它继续运行]": "[Resident terminal started for {cwd}; it keeps running when you switch away]",
+      "正在为工作区 {cwd} 启动终端…": "Starting a terminal for {cwd}…",
       "后台终端：{count}": "Terminals: {count}",
       "已复制 {count} 个字符": "Copied {count} characters",
       "选择本工作区终端使用的 shell（默认 shell / Windows:cmd / Windows:PowerShell / WSL / SSH）": "Shell used by terminals in this workspace (default shell / Windows:cmd / Windows:PowerShell / WSL / SSH)",
@@ -6331,7 +6331,7 @@ window.__ModuleLoader__.load({
 					s.observer.observe(s.host);
 				}
 
-				term.write(`\r\n\x1b[2m` + tr("[已为工作区 {cwd} 启动常驻终端；切走后它继续运行]", { cwd: labelOf(s.key) }) + `\x1b[0m\r\n`);
+				term.write(`\x1b[2m` + tr("正在为工作区 {cwd} 启动终端…", { cwd: labelOf(s.key) }) + `\x1b[0m\r\n`);
 				s.booted = true;
 				refit(s.key);
 				connect(s);
