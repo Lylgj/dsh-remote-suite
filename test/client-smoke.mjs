@@ -364,4 +364,22 @@ assert.ok(!source.includes('\\x1b[3J'), 'clear must not wipe the prompt line wit
 assert.match(source, /className: "dsh-term-menu-anchor"/, 'the copy menu floats above the terminal')
 assert.match(source, /className: "dsh-term-chip"/, 'the clipboard switches render as chips')
 assert.ok(!source.includes('dsh-term-menu-hint'), 'the explanatory line under the switches is gone')
+// Markdown documents must render as documents: taking the files kind over
+// replaces the Host's previewer, so a plain textarea would show raw syntax.
+assert.ok(source.includes('const SF_MARKDOWN_RE = /\\.(md|markdown|mdx)$/i'), 'markdown files are recognised')
+assert.ok(source.includes('const [preview, setPreview] = React.useState(true)'), 'the preview toggle starts on')
+assert.ok(source.includes('setPreview(SF_MARKDOWN_RE.test(path))'), 'opening a markdown file turns the preview on')
+assert.ok(source.includes('const isMarkdown = SF_MARKDOWN_RE.test(doc.path)'), 'the pane knows the document is markdown')
+assert.ok(source.includes("h('div', { className: 'rs-sf-md' }, mdBlocks(text, 'md'))"), 'the preview renders the parsed blocks')
+assert.ok(source.includes("showPreview ? tr('编辑') : tr('预览')"), 'the bar carries a preview/edit switch')
+const rendererFrom = source.indexOf('const SF_MARKDOWN_RE')
+const rendererTo = source.indexOf('const SF_IMAGE_RE', rendererFrom)
+assert.ok(rendererFrom > 0 && rendererTo > rendererFrom, 'the renderer sits next to the other file helpers')
+const renderer = source.slice(rendererFrom, rendererTo)
+assert.ok(
+  !renderer.includes('dangerouslySetInnerHTML'),
+  'document text must become React elements, never raw html',
+)
+console.log('ok  markdown documents render as documents')
+
 console.log('client smoke ok')

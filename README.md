@@ -115,6 +115,7 @@ dsh plugin --profile web remove @lylgj/dsh-remote-suite       # 卸载
 - **编辑**：语法高亮、行号，`Ctrl/Cmd+S` 保存（带 `expectedMtimeMs` 冲突检测），`Ctrl/Cmd+F` 查找。
 - **管理**：新建文件/目录、重命名、删除，支持多选与右键菜单。
 - **传输**：拖拽或选择文件上传；单文件下载，目录可打包成 zip。
+- **Markdown 预览**：`.md` / `.markdown` / `.mdx` 按渲染后的样子打开，工具条可切回源码。
 - **大文件**：超过 5 MiB 的文本以 128 KiB 分页读取。
 - **实时刷新**：目录变化后自动重载列表。
 

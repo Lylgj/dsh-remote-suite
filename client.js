@@ -1212,6 +1212,31 @@ window.__ModuleLoader__.load({
         font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
         tab-size: 2;
       }
+      .rs-sf-btn.is-on{background:color-mix(in srgb,currentColor 14%,transparent);}
+      .rs-sf-md{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 16px 26px;font-size:13px;line-height:1.75;}
+      .rs-sf-md .rs-md-block{margin:0 0 12px;}
+      .rs-sf-md .rs-md-block:last-child{margin-bottom:0;}
+      .rs-sf-md .rs-md-p{white-space:pre-wrap;word-break:break-word;}
+      .rs-sf-md .rs-md-h1{font-size:20px;line-height:1.4;font-weight:650;margin:18px 0 12px;}
+      .rs-sf-md .rs-md-h2{font-size:17px;line-height:1.45;font-weight:650;margin:18px 0 10px;}
+      .rs-sf-md .rs-md-h3{font-size:15px;line-height:1.5;font-weight:650;margin:16px 0 8px;}
+      .rs-sf-md .rs-md-h4,.rs-sf-md .rs-md-h5,.rs-sf-md .rs-md-h6{font-size:13px;line-height:1.5;font-weight:650;margin:14px 0 6px;opacity:.85;}
+      .rs-sf-md .rs-md-h1:first-child,.rs-sf-md .rs-md-h2:first-child,.rs-sf-md .rs-md-h3:first-child{margin-top:0;}
+      .rs-sf-md .rs-md-list{margin:0 0 12px;padding-left:22px;}
+      .rs-sf-md .rs-md-list li{margin:2px 0;}
+      .rs-sf-md .rs-md-codeblock{position:relative;border:1px solid color-mix(in srgb,currentColor 14%,transparent);border-radius:8px;background:color-mix(in srgb,currentColor 5%,transparent);overflow:hidden;}
+      .rs-sf-md .rs-md-lang{position:absolute;top:6px;right:10px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;opacity:.5;}
+      .rs-sf-md .rs-md-pre{margin:0;padding:12px 14px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;}
+      .rs-sf-md .rs-md-pre code{background:none;padding:0;}
+      .rs-sf-md .rs-md-inline{padding:1px 5px;border-radius:5px;background:color-mix(in srgb,currentColor 10%,transparent);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;}
+      .rs-sf-md .rs-md-quote{margin:0 0 12px;padding:2px 0 2px 12px;border-left:3px solid color-mix(in srgb,currentColor 22%,transparent);opacity:.9;}
+      .rs-sf-md .rs-md-hr{border:0;border-top:1px solid color-mix(in srgb,currentColor 16%,transparent);margin:16px 0;}
+      .rs-sf-md .rs-md-tablewrap{overflow:auto;}
+      .rs-sf-md .rs-md-table{border-collapse:collapse;font-size:12px;}
+      .rs-sf-md .rs-md-table th,.rs-sf-md .rs-md-table td{border:1px solid color-mix(in srgb,currentColor 16%,transparent);padding:5px 10px;text-align:left;vertical-align:top;}
+      .rs-sf-md .rs-md-table th{font-weight:650;background:color-mix(in srgb,currentColor 6%,transparent);}
+      .rs-sf-md a{color:inherit;text-decoration:underline;text-underline-offset:2px;}
+      .rs-sf-md .rs-md-image{opacity:.75;font-style:italic;}
       .rs-sf-image { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; text-align: center; }
       .rs-sf-image img { max-width: 100%; border-radius: 8px; }
       .rs-sf-err { flex: 0 0 auto; padding: 7px 12px; color: #e11d48; font-size: 11px; }
@@ -3359,6 +3384,270 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
 
     const SIDEBAR_WATCH = '/remote-suite/sidebar/ws/fs-watch'
+    const SF_MARKDOWN_RE = /\.(md|markdown|mdx)$/i
+
+    /* Markdown preview for the files pane. Taking the pane over means the host's
+       document previewer is gone, so this component has to render documents
+       itself. Everything below becomes React elements: file text never reaches
+       innerHTML, so a document cannot inject markup into DSH. The scope is the
+       subset that technical notes actually use — headings, paragraphs, lists,
+       fenced code, tables, quotes, rules and inline emphasis. */
+    function mdLinkTarget(raw) {
+      const href = String(raw).trim()
+      return /^(https?:\/\/|mailto:)/i.test(href) ? href : null
+    }
+
+    function mdInline(source, key) {
+      const out = []
+      const text = String(source)
+      let index = 0
+      let plain = ''
+      const flush = () => {
+        if (plain === '') return
+        out.push(plain)
+        plain = ''
+      }
+      while (index < text.length) {
+        const rest = text.slice(index)
+        const at = key + ':' + index
+        let match = /^`([^`\n]+)`/.exec(rest)
+        if (match !== null) {
+          flush()
+          out.push(h('code', { key: at, className: 'rs-md-inline' }, match[1]))
+          index += match[0].length
+          continue
+        }
+        match = /^!\[([^\]\n]*)\]\(([^)\s]+)[^)]*\)/.exec(rest)
+        if (match !== null) {
+          flush()
+          out.push(h('span', { key: at, className: 'rs-md-image' }, match[1] === '' ? '图片' : match[1]))
+          index += match[0].length
+          continue
+        }
+        match = /^\[([^\]\n]+)\]\(([^)\s]+)[^)]*\)/.exec(rest)
+        if (match !== null) {
+          const href = mdLinkTarget(match[2])
+          flush()
+          out.push(
+            href === null
+              ? h('span', { key: at }, match[1])
+              : h('a', { key: at, href, target: '_blank', rel: 'noreferrer noopener' }, match[1]),
+          )
+          index += match[0].length
+          continue
+        }
+        match = /^(\*\*|__)(?=\S)([\s\S]*?\S)\1/.exec(rest)
+        if (match !== null) {
+          flush()
+          out.push(h('strong', { key: at }, mdInline(match[2], at)))
+          index += match[0].length
+          continue
+        }
+        match = /^~~(?=\S)([\s\S]*?\S)~~/.exec(rest)
+        if (match !== null) {
+          flush()
+          out.push(h('del', { key: at }, mdInline(match[1], at)))
+          index += match[0].length
+          continue
+        }
+        match = /^\*(?=\S)([^*\n]*?\S)\*/.exec(rest)
+        if (match !== null) {
+          flush()
+          out.push(h('em', { key: at }, mdInline(match[1], at)))
+          index += match[0].length
+          continue
+        }
+        plain += text[index]
+        index += 1
+      }
+      flush()
+      return out
+    }
+
+    function mdCells(line) {
+      return line
+        .replace(/^\s*\|/, '')
+        .replace(/\|\s*$/, '')
+        .split('|')
+        .map((cell) => cell.trim())
+    }
+
+    function mdIsTableRule(line) {
+      if (line.indexOf('-') === -1) return false
+      return /^\s*\|?(\s*:?-{1,}:?\s*\|)+\s*:?-{1,}:?\s*\|?\s*$/.test(line)
+    }
+
+    function mdBlocks(source, keyPrefix) {
+      const lines = String(source).replace(/\r\n?/g, '\n').split('\n')
+      const blocks = []
+      const key = (suffix) => keyPrefix + '-' + blocks.length + '-' + suffix
+      let index = 0
+      while (index < lines.length) {
+        const line = lines[index]
+        if (/^\s*$/.test(line)) {
+          index += 1
+          continue
+        }
+
+        const fence = /^\s{0,3}(`{3,}|~{3,})\s*([\w+#.-]*)\s*$/.exec(line)
+        if (fence !== null) {
+          const body = []
+          index += 1
+          while (index < lines.length && /^\s{0,3}(`{3,}|~{3,})\s*$/.test(lines[index]) === false) {
+            body.push(lines[index])
+            index += 1
+          }
+          index += 1
+          blocks.push(
+            h(
+              'div',
+              { key: key('code'), className: 'rs-md-block rs-md-codeblock' },
+              fence[2] === ''
+                ? null
+                : h('span', { className: 'rs-md-lang' }, fence[2]),
+              h('pre', { className: 'rs-md-pre' }, h('code', null, body.join('\n'))),
+            ),
+          )
+          continue
+        }
+
+        const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line)
+        if (heading !== null) {
+          const level = heading[1].length
+          blocks.push(
+            h(
+              'div',
+              {
+                key: key('h'),
+                className: 'rs-md-block rs-md-h' + level,
+                role: 'heading',
+                'aria-level': level,
+              },
+              mdInline(heading[2], key('h')),
+            ),
+          )
+          index += 1
+          continue
+        }
+
+        if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) {
+          blocks.push(h('hr', { key: key('hr'), className: 'rs-md-hr' }))
+          index += 1
+          continue
+        }
+
+        if (line.indexOf('|') !== -1 && index + 1 < lines.length && mdIsTableRule(lines[index + 1]) === true) {
+          const head = mdCells(line)
+          index += 2
+          const rows = []
+          while (index < lines.length && /^\s*$/.test(lines[index]) === false && lines[index].indexOf('|') !== -1) {
+            rows.push(mdCells(lines[index]))
+            index += 1
+          }
+          blocks.push(
+            h(
+              'div',
+              { key: key('table'), className: 'rs-md-block rs-md-tablewrap' },
+              h(
+                'table',
+                { className: 'rs-md-table' },
+                h(
+                  'thead',
+                  null,
+                  h(
+                    'tr',
+                    null,
+                    head.map((cell, cellIndex) =>
+                      h('th', { key: 'th' + cellIndex }, mdInline(cell, key('th') + cellIndex)),
+                    ),
+                  ),
+                ),
+                h(
+                  'tbody',
+                  null,
+                  rows.map((row, rowIndex) =>
+                    h(
+                      'tr',
+                      { key: 'tr' + rowIndex },
+                      head.map((_, cellIndex) =>
+                        h(
+                          'td',
+                          { key: 'td' + cellIndex },
+                          mdInline(
+                            row[cellIndex] === undefined ? '' : row[cellIndex],
+                            key('td') + rowIndex + '-' + cellIndex,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+          continue
+        }
+
+        if (/^\s{0,3}>/.test(line) === true) {
+          const body = []
+          while (index < lines.length && /^\s{0,3}>/.test(lines[index]) === true) {
+            body.push(lines[index].replace(/^\s{0,3}>\s?/, ''))
+            index += 1
+          }
+          blocks.push(
+            h(
+              'blockquote',
+              { key: key('quote'), className: 'rs-md-block rs-md-quote' },
+              mdBlocks(body.join('\n'), key('quote')),
+            ),
+          )
+          continue
+        }
+
+        const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line)
+        if (item !== null) {
+          const indent = item[1].length
+          const ordered = /^\d/.test(item[2]) === true
+          const items = []
+          while (index < lines.length) {
+            const current = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[index])
+            if (current === null || current[1].length !== indent) break
+            const parts = [current[3]]
+            index += 1
+            while (index < lines.length && /^\s*$/.test(lines[index]) === false) {
+              const next = lines[index]
+              if (/^(\s*)([-*+]|\d+[.)])\s+/.test(next) === true) break
+              if (/^\s{0,3}(#{1,6}\s|>|`{3,}|~{3,})/.test(next) === true) break
+              parts.push(next.trim())
+              index += 1
+            }
+            items.push(h('li', { key: key('li') + items.length }, mdInline(parts.join('\n'), key('li') + items.length)))
+            if (index < lines.length && /^\s*$/.test(lines[index]) === true) break
+          }
+          blocks.push(h(ordered ? 'ol' : 'ul', { key: key('list'), className: 'rs-md-block rs-md-list' }, items))
+          continue
+        }
+
+        const paragraph = []
+        while (index < lines.length && /^\s*$/.test(lines[index]) === false) {
+          const current = lines[index]
+          if (paragraph.length > 0) {
+            const startsBlock =
+              /^\s{0,3}#{1,6}\s+/.test(current) === true ||
+              /^\s{0,3}(`{3,}|~{3,})/.test(current) === true ||
+              /^\s{0,3}>/.test(current) === true ||
+              /^(\s*)([-*+]|\d+[.)])\s+/.test(current) === true ||
+              /^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(current) === true
+            if (startsBlock === true) break
+          }
+          paragraph.push(current)
+          index += 1
+        }
+        blocks.push(h('p', { key: key('p'), className: 'rs-md-block rs-md-p' }, mdInline(paragraph.join('\n'), key('p'))))
+      }
+      return blocks
+    }
+
     const SF_IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i
     const SF_AUDIO_RE = /\.(mp3|wav|ogg|m4a|flac)$/i
     const SF_ARCHIVE_RE = /\.(zip|gz|tgz|tar|7z|rar|bz2|xz)$/i
@@ -3514,6 +3803,7 @@ window.__ModuleLoader__.load({
       const [doc, setDoc] = React.useState(null)
       const [text, setText] = React.useState('')
       const [dirty, setDirty] = React.useState(false)
+      const [preview, setPreview] = React.useState(true)
       const [page, setPage] = React.useState(null)
       const [naming, setNaming] = React.useState(null)
       const [name, setName] = React.useState('')
@@ -3753,6 +4043,7 @@ window.__ModuleLoader__.load({
         setDoc({ path, kind: 'text', size: 0, mtimeMs: 0 })
         setText('')
         setDirty(false)
+        setPreview(SF_MARKDOWN_RE.test(path))
         setPage(null)
         setFindOpen(false)
         setFindTerm('')
@@ -4157,6 +4448,8 @@ window.__ModuleLoader__.load({
                     ),
             )
           }
+          const isMarkdown = SF_MARKDOWN_RE.test(doc.path)
+          const showPreview = preview === true && isMarkdown
           const gutter = []
           for (let n = 1; n <= lineCount; n += 1) gutter.push(n)
           return h(
@@ -4167,6 +4460,16 @@ window.__ModuleLoader__.load({
               { className: 'rs-sf-bar' },
               h('span', { className: 'rs-sf-crumbs', title: doc.path }, filesBaseName(doc.path)),
               h('span', { className: 'rs-sf-meta' }, dirty ? tr('已修改') : filesBytes(doc.size)),
+              isMarkdown
+                ? h(
+                    'button',
+                    {
+                      className: 'rs-sf-btn' + (showPreview ? ' is-on' : ''),
+                      onClick: () => setPreview((previous) => previous !== true),
+                    },
+                    showPreview ? tr('编辑') : tr('预览'),
+                  )
+                : null,
               h('button', { className: 'rs-sf-btn', onClick: save, disabled: busy || dirty === false }, tr('保存')),
               h('button', { className: 'rs-sf-btn', onClick: () => downloadFile(doc.path) }, tr('下载')),
               h('button', { className: 'rs-sf-btn', onClick: () => setFindOpen((previous) => !previous) }, tr('查找')),
@@ -4188,58 +4491,60 @@ window.__ModuleLoader__.load({
                 : null,
             ),
             findBar,
-            h(
-              'div',
-              { className: 'rs-code-wrap rs-sf-codewrap' },
-              h('div', { className: 'rs-gutter', ref: gutterRef }, gutter.join('\n')),
-              h(
-                'div',
-                { className: 'rs-code-scroll' },
-                h('pre', {
-                  className: 'rs-code-hl',
-                  ref: hlRef,
-                  'aria-hidden': true,
-                  dangerouslySetInnerHTML: { __html: html + '\n' },
-                }),
-                h('textarea', {
-                  className: 'rs-code-ta',
-                  ref: taRef,
-                  value: text,
-                  spellCheck: false,
-                  wrap: 'off',
-                  onChange: (event) => {
-                    setText(event.target.value)
-                    setDirty(true)
-                  },
-                  onScroll: syncScroll,
-                  onKeyDown: (event) => {
-                    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-                      event.preventDefault()
-                      save()
-                    }
-                    if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
-                      event.preventDefault()
-                      setFindOpen(true)
-                    }
-                    if (event.key === 'Tab') {
-                      event.preventDefault()
-                      const ta = event.target
-                      const start = ta.selectionStart
-                      const end = ta.selectionEnd
-                      const next = text.slice(0, start) + '  ' + text.slice(end)
-                      setText(next)
+            showPreview
+              ? h('div', { className: 'rs-sf-md' }, mdBlocks(text, 'md'))
+              : h(
+                  'div',
+                  { className: 'rs-code-wrap rs-sf-codewrap' },
+                h('div', { className: 'rs-gutter', ref: gutterRef }, gutter.join('\n')),
+                h(
+                  'div',
+                  { className: 'rs-code-scroll' },
+                  h('pre', {
+                    className: 'rs-code-hl',
+                    ref: hlRef,
+                    'aria-hidden': true,
+                    dangerouslySetInnerHTML: { __html: html + '\n' },
+                  }),
+                  h('textarea', {
+                    className: 'rs-code-ta',
+                    ref: taRef,
+                    value: text,
+                    spellCheck: false,
+                    wrap: 'off',
+                    onChange: (event) => {
+                      setText(event.target.value)
                       setDirty(true)
-                      requestAnimationFrame(() => {
-                        if (taRef.current !== null) {
-                          taRef.current.selectionStart = start + 2
-                          taRef.current.selectionEnd = start + 2
-                        }
-                      })
-                    }
-                  },
-                }),
+                    },
+                    onScroll: syncScroll,
+                    onKeyDown: (event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+                        event.preventDefault()
+                        save()
+                      }
+                      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+                        event.preventDefault()
+                        setFindOpen(true)
+                      }
+                      if (event.key === 'Tab') {
+                        event.preventDefault()
+                        const ta = event.target
+                        const start = ta.selectionStart
+                        const end = ta.selectionEnd
+                        const next = text.slice(0, start) + '  ' + text.slice(end)
+                        setText(next)
+                        setDirty(true)
+                        requestAnimationFrame(() => {
+                          if (taRef.current !== null) {
+                            taRef.current.selectionStart = start + 2
+                            taRef.current.selectionEnd = start + 2
+                          }
+                        })
+                      }
+                    },
+                  }),
+                ),
               ),
-            ),
             h(
               'div',
               { className: 'rs-sf-meta rs-sf-status' },
@@ -4529,6 +4834,8 @@ window.__ModuleLoader__.load({
       "选择本工作区终端使用的 shell（默认 shell / Windows:cmd / Windows:PowerShell / WSL / SSH）": "Shell used by terminals in this workspace (default shell / Windows:cmd / Windows:PowerShell / WSL / SSH)",
       "复制与粘贴": "Copy and paste",
       "行为": "Behaviour",
+      "预览": "Preview",
+      "编辑": "Edit",
       "有选中内容时 Ctrl+C（macOS 上 Cmd+C）复制选中文本；没有选中时仍然发送 ^C 中断命令": "With a selection, Ctrl+C (Cmd+C on macOS) copies it; with nothing selected it still sends ^C to interrupt",
       "在终端里点右键直接粘贴剪贴板内容（读取剪贴板需要 localhost 或 HTTPS）": "Right-click in the terminal pastes the clipboard directly (reading the clipboard needs localhost or HTTPS)",
       "当前为浮层：终端盖在 DSH 上。点击改为并排（DSH 让出空间）": "Floating now: the terminal covers DSH. Click to dock side by side (DSH makes room)",

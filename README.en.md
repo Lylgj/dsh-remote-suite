@@ -115,6 +115,7 @@ The built-in "workspace files" panel in the right sidebar is taken over by this 
 - **Edit**: syntax highlighting and line numbers, `Ctrl/Cmd+S` to save (with `expectedMtimeMs` conflict detection), `Ctrl/Cmd+F` to find.
 - **Manage**: create files and folders, rename, delete, multi-select and a context menu.
 - **Transfer**: drag or pick files to upload; download single files, or a directory as a zip.
+- **Markdown preview**: `.md` / `.markdown` / `.mdx` open rendered, with a switch back to the source.
 - **Large files**: text above 5 MiB is read in 128 KiB pages.
 - **Live refresh**: the listing reloads when the directory changes.
 
